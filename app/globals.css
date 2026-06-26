@@ -30,6 +30,15 @@ select {
   font: inherit;
 }
 
+/* iOS Safari auto-zoom prevention: zooms in when font-size < 16px */
+@supports (-webkit-touch-callout: none) {
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+}
+
 button:not(:disabled) {
   cursor: pointer;
 }
