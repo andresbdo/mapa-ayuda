@@ -11,6 +11,43 @@ import { TYPE_LABELS, type PointType } from "@/lib/types";
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
 const LOCATION_ENABLED_KEY = "mapa-ayuda-location-enabled";
+const SEARCH_PARAM = "q";
+const TYPE_PARAM = "type";
+
+function getInitialSearch(): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get(SEARCH_PARAM) ?? "";
+}
+
+function parseFilter(value: string | null): Filter {
+  if (value === "COLLECTION" || value === "DELIVERY") return value;
+  return "ALL";
+}
+
+function getInitialFilter(): Filter {
+  if (typeof window === "undefined") return "ALL";
+  return parseFilter(new URLSearchParams(window.location.search).get(TYPE_PARAM));
+}
+
+function updateShareUrl(search: string, filter: Filter, replace = false) {
+  if (typeof window === "undefined") return;
+
+  const url = new URL(window.location.href);
+  const trimmedSearch = search.trim();
+  if (trimmedSearch) {
+    url.searchParams.set(SEARCH_PARAM, trimmedSearch);
+  } else {
+    url.searchParams.delete(SEARCH_PARAM);
+  }
+  if (filter === "ALL") {
+    url.searchParams.delete(TYPE_PARAM);
+  } else {
+    url.searchParams.set(TYPE_PARAM, filter);
+  }
+
+  const method = replace ? "replaceState" : "pushState";
+  window.history[method](null, "", `${url.pathname}${url.search}${url.hash}`);
+}
 
 function escapeHtml(s: string): string {
   return s
@@ -86,6 +123,7 @@ export default function MapView() {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const geolocateRef = useRef<maplibregl.GeolocateControl | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  const appliedInitialSearchRef = useRef(false);
 
   const [points, setPoints] = useState<Point[]>([]);
   const [filter, setFilter] = useState<Filter>("ALL");
@@ -106,6 +144,50 @@ export default function MapView() {
     const res = await fetch("/api/points");
     if (res.ok) setPoints(await res.json());
   }, []);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setSearch(getInitialSearch());
+      setFilter(getInitialFilter());
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  const geocodeSearch = useCallback(
+    async (
+      value: string,
+      options?: { replaceUrl?: boolean; filterForUrl?: Filter }
+    ) => {
+      const query = value.trim();
+      if (!query) return;
+
+      setSearching(true);
+      try {
+        const language =
+          typeof navigator === "undefined" ? "es" : navigator.language;
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=${encodeURIComponent(
+            language
+          )}&q=${encodeURIComponent(query)}`
+        );
+        const data = (await res.json()) as Array<{ lat: string; lon: string }>;
+        if (data[0] && mapRef.current) {
+          mapRef.current.flyTo({
+            center: [parseFloat(data[0].lon), parseFloat(data[0].lat)],
+            zoom: 14,
+          });
+          updateShareUrl(
+            query,
+            options?.filterForUrl ?? filter,
+            options?.replaceUrl
+          );
+        }
+      } finally {
+        setSearching(false);
+      }
+    },
+    [filter]
+  );
 
   useEffect(() => {
     if (mapRef.current || !mapContainer.current) return;
@@ -143,10 +225,20 @@ export default function MapView() {
         const shouldLocate =
           "geolocation" in navigator &&
           localStorage.getItem(LOCATION_ENABLED_KEY) === "true";
-        setShowLocationPrompt("geolocation" in navigator && !shouldLocate);
+        const initialSearch = getInitialSearch();
+        setShowLocationPrompt(
+          "geolocation" in navigator && !shouldLocate && !initialSearch
+        );
         if (shouldLocate) {
           setLocating(true);
           geolocate.trigger();
+        }
+        if (initialSearch && !appliedInitialSearchRef.current) {
+          appliedInitialSearchRef.current = true;
+          void geocodeSearch(initialSearch, {
+            replaceUrl: true,
+            filterForUrl: getInitialFilter(),
+          });
         }
       });
 
@@ -162,7 +254,7 @@ export default function MapView() {
       mapRef.current = null;
       geolocateRef.current = null;
     };
-  }, [loadPoints]);
+  }, [geocodeSearch, loadPoints]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -227,24 +319,12 @@ export default function MapView() {
 
   const runSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!search.trim()) return;
-    setSearching(true);
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=${encodeURIComponent(
-          navigator.language
-        )}&q=${encodeURIComponent(search)}`
-      );
-      const data = (await res.json()) as Array<{ lat: string; lon: string }>;
-      if (data[0] && mapRef.current) {
-        mapRef.current.flyTo({
-          center: [parseFloat(data[0].lon), parseFloat(data[0].lat)],
-          zoom: 14,
-        });
-      }
-    } finally {
-      setSearching(false);
-    }
+    await geocodeSearch(search);
+  };
+
+  const selectFilter = (nextFilter: Filter) => {
+    setFilter(nextFilter);
+    updateShareUrl(search, nextFilter);
   };
 
   return (
@@ -307,19 +387,19 @@ export default function MapView() {
         </form>
 
         <div className="pointer-events-auto flex gap-1.5 self-center rounded-full bg-white p-1 shadow-lg">
-          <FilterButton active={filter === "ALL"} onClick={() => setFilter("ALL")}>
+          <FilterButton active={filter === "ALL"} onClick={() => selectFilter("ALL")}>
             Todo
           </FilterButton>
           <FilterButton
             active={filter === "COLLECTION"}
-            onClick={() => setFilter("COLLECTION")}
+            onClick={() => selectFilter("COLLECTION")}
             dot="bg-blue-600"
           >
             Centro de acopio
           </FilterButton>
           <FilterButton
             active={filter === "DELIVERY"}
-            onClick={() => setFilter("DELIVERY")}
+            onClick={() => selectFilter("DELIVERY")}
             dot="bg-red-600"
           >
             Entrega de ayuda
