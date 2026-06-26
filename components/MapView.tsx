@@ -81,7 +81,8 @@ export default function MapView() {
   const [selected, setSelected] = useState<Point | null>(null);
   const [search, setSearch] = useState("");
   const [searching, setSearching] = useState(false);
-  const [locating, setLocating] = useState(true);
+  const [locating, setLocating] = useState(false);
+  const [showLocationPrompt, setShowLocationPrompt] = useState(true);
 
   const loadPoints = useCallback(async () => {
     const res = await fetch("/api/points");
@@ -114,30 +115,14 @@ export default function MapView() {
       });
       map.on("load", () => {
         if (cancelled) return;
-        setLocating(false);
-        try {
-          geolocate.trigger();
-        } catch {
-          // sin permiso: queda la vista por defecto, sin animación
-        }
+        setShowLocationPrompt("geolocation" in navigator);
       });
 
       mapRef.current = map;
       loadPoints();
     };
 
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-          initMap([pos.coords.longitude, pos.coords.latitude], 14);
-        },
-        () => initMap([-66.9, 10.5], 5),
-        { enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 }
-      );
-    } else {
-      initMap([-66.9, 10.5], 5);
-    }
+    initMap([-66.9, 10.5], 5);
 
     return () => {
       cancelled = true;
@@ -197,6 +182,31 @@ export default function MapView() {
     }
   }, [points, filter]);
 
+  const requestLocation = () => {
+    setShowLocationPrompt(false);
+    if (!navigator.geolocation) return;
+
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const nextLoc = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+        setUserLoc(nextLoc);
+        mapRef.current?.flyTo({
+          center: [nextLoc.lng, nextLoc.lat],
+          zoom: 14,
+        });
+        setLocating(false);
+      },
+      () => {
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  };
+
   const runSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!search.trim()) return;
@@ -224,10 +234,39 @@ export default function MapView() {
       <div ref={mapContainer} className="h-full w-full" />
 
       {locating && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-white">
-          <div className="flex flex-col items-center gap-3 text-black/60">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 rounded-3xl bg-white px-8 py-7 text-black/60 shadow-2xl">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-black/15 border-t-blue-600" />
             <p className="text-sm">Ubicándote…</p>
+          </div>
+        </div>
+      )}
+
+      {showLocationPrompt && !locating && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80 p-5 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-3xl">
+              📍
+            </div>
+            <h1 className="text-3xl font-bold leading-tight text-black">
+              ¿Activar tu ubicación?
+            </h1>
+            <p className="mt-3 text-sm leading-6 text-black/60">
+              Usamos tu ubicación para acercar el mapa a tu zona y mostrarte los
+              puntos más cercanos.
+            </p>
+            <button
+              onClick={requestLocation}
+              className="mt-6 w-full rounded-full bg-blue-600 px-5 py-3.5 text-sm font-semibold text-white shadow-lg active:scale-95"
+            >
+              Activar ubicación
+            </button>
+            <button
+              onClick={() => setShowLocationPrompt(false)}
+              className="mt-3 w-full rounded-full px-5 py-3 text-sm font-medium text-black/55"
+            >
+              Ahora no
+            </button>
           </div>
         </div>
       )}
