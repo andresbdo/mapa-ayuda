@@ -31,6 +31,7 @@ function pointSnapshot(point: {
   contact: string | null;
   contacts: Prisma.JsonValue;
   instagram: string | null;
+  instagramPost: string | null;
   temporarilyUnavailable: boolean;
 }): Prisma.InputJsonObject {
   return {
@@ -48,6 +49,7 @@ function pointSnapshot(point: {
     contact: point.contact,
     contacts: (point.contacts ?? []) as Prisma.InputJsonValue,
     instagram: point.instagram,
+    instagramPost: point.instagramPost,
     temporarilyUnavailable: point.temporarilyUnavailable,
   };
 }
@@ -121,6 +123,7 @@ export async function PATCH(
             contact: d.contact || null,
             contacts: d.contacts,
             instagram: d.instagram || null,
+            instagramPost: d.instagramPost || null,
             temporarilyUnavailable: d.temporarilyUnavailable,
             status: before.status,
           },

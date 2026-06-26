@@ -48,6 +48,18 @@ const instagramString = z
   .optional()
   .or(z.literal(""));
 
+const instagramPostString = z
+  .string()
+  .trim()
+  .refine(
+    (value) =>
+      !value ||
+      /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/[A-Za-z0-9_-]+\/?/.test(value),
+    { message: "URL de Instagram inválida. Debe ser un link a una publicación, reel o video." }
+  )
+  .optional()
+  .or(z.literal(""));
+
 export const pointInputSchema = z
   .object({
     type: z.enum(POINT_TYPES),
@@ -64,6 +76,7 @@ export const pointInputSchema = z
     contact: phoneString,
     contacts: z.array(contactPhoneSchema).max(3, "Máximo 3 celulares").default([]),
     instagram: instagramString,
+    instagramPost: instagramPostString,
     temporarilyUnavailable: z.boolean().default(false),
   })
   .refine(

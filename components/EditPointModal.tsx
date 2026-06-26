@@ -62,6 +62,7 @@ export default function EditPointModal({
     contactPhonesFromPoint(point.contacts, point.contact)
   );
   const [instagram, setInstagram] = useState(point.instagram ?? "");
+  const [instagramPost, setInstagramPost] = useState(point.instagramPost ?? "");
   const [description, setDescription] = useState(point.description ?? "");
   const [temporarilyUnavailable, setTemporarilyUnavailable] = useState(
     point.temporarilyUnavailable
@@ -144,6 +145,7 @@ export default function EditPointModal({
           contact: normalizedContacts[0]?.phone ?? "",
           contacts: normalizedContacts,
           instagram: normalizeInstagramHandle(instagram),
+          instagramPost: instagramPost.trim() || "",
           temporarilyUnavailable,
         }),
       });
@@ -382,12 +384,21 @@ export default function EditPointModal({
 
         <ContactPhonesEditor contacts={contacts} onChange={setContacts} />
 
-        <Field label="Instagram">
+        <Field label="Instagram (perfil)">
           <input
             value={instagram}
             onChange={(e) => setInstagram(e.target.value)}
             onBlur={() => setInstagram(normalizeInstagramHandle(instagram))}
             placeholder="@usuario"
+            className="input"
+          />
+        </Field>
+
+        <Field label="Instagram (publicación o reel)">
+          <input
+            value={instagramPost}
+            onChange={(e) => setInstagramPost(e.target.value)}
+            placeholder="https://www.instagram.com/p/..."
             className="input"
           />
         </Field>

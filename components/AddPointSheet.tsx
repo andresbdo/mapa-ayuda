@@ -60,6 +60,7 @@ export default function AddPointSheet({
   const [address, setAddress] = useState("");
   const [contacts, setContacts] = useState<ContactPhone[]>([]);
   const [instagram, setInstagram] = useState("");
+  const [instagramPost, setInstagramPost] = useState("");
   const [description, setDescription] = useState("");
   const [temporarilyUnavailable, setTemporarilyUnavailable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -163,6 +164,7 @@ export default function AddPointSheet({
           contact: normalizedContacts[0]?.phone ?? "",
           contacts: normalizedContacts,
           instagram: normalizeInstagramHandle(instagram),
+          instagramPost: instagramPost.trim() || "",
           temporarilyUnavailable,
         }),
       });
@@ -424,12 +426,21 @@ export default function AddPointSheet({
 
         <ContactPhonesEditor contacts={contacts} onChange={setContacts} />
 
-        <Field label="Instagram">
+        <Field label="Instagram (perfil)">
           <input
             value={instagram}
             onChange={(e) => setInstagram(e.target.value)}
             onBlur={() => setInstagram(normalizeInstagramHandle(instagram))}
             placeholder="@usuario"
+            className="input"
+          />
+        </Field>
+
+        <Field label="Instagram (publicación o reel)">
+          <input
+            value={instagramPost}
+            onChange={(e) => setInstagramPost(e.target.value)}
+            placeholder="https://www.instagram.com/p/..."
             className="input"
           />
         </Field>

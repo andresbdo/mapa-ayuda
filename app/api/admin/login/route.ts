@@ -1,26 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminToken, COOKIE_NAME, isAdmin } from "@/lib/auth";
+import { getAdminToken, COOKIE_NAME, isAdmin, isSuperAdmin } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 export async function GET() {
-  return NextResponse.json({ admin: await isAdmin() });
+  const admin = await isAdmin();
+  if (!admin) return NextResponse.json({ admin: false, superAdmin: false });
+  const superAdmin = await isSuperAdmin();
+  return NextResponse.json({ admin: true, superAdmin });
 }
 
 export async function POST(req: NextRequest) {
-  const token = getAdminToken();
-  if (!token) {
-    return NextResponse.json(
-      { error: "ADMIN_TOKEN no configurado en el servidor" },
-      { status: 500 }
-    );
+  const superToken = getAdminToken();
+  const body = (await req.json().catch(() => ({}))) as { token?: string };
+  const submitted = body.token?.trim() ?? "";
+
+  if (!submitted) {
+    return NextResponse.json({ error: "Token requerido" }, { status: 400 });
   }
 
-  const body = (await req.json().catch(() => ({}))) as { token?: string };
-  if (body.token !== token) {
+  let valid = false;
+  if (superToken && submitted === superToken) {
+    valid = true;
+  } else {
+    const dbToken = await prisma.adminToken.findUnique({
+      where: { token: submitted },
+      select: { id: true },
+    });
+    valid = dbToken !== null;
+  }
+
+  if (!valid) {
     return NextResponse.json({ error: "Token incorrecto" }, { status: 401 });
   }
 
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(COOKIE_NAME, token, {
+  res.cookies.set(COOKIE_NAME, submitted, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

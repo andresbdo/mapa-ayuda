@@ -150,6 +150,17 @@ export default function PointDetails({
               Instagram @{point.instagram}
             </a>
           )}
+
+          {point.instagramPost && (
+            <a
+              href={point.instagramPost}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full rounded-xl border border-pink-300 py-3 text-center text-sm font-semibold text-pink-700"
+            >
+              Ver publicación en Instagram
+            </a>
+          )}
         </div>
 
         <button

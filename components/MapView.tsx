@@ -142,6 +142,7 @@ export type Point = {
   contact: string | null;
   contacts: ContactPhone[];
   instagram: string | null;
+  instagramPost: string | null;
   temporarilyUnavailable: boolean;
 };
 
@@ -447,7 +448,7 @@ export default function MapView() {
           </button>
         </form>
 
-        <div className="pointer-events-auto flex gap-1.5 self-center rounded-full bg-white p-1 shadow-lg">
+        <div className="pointer-events-auto flex gap-0.5 self-center rounded-full bg-white p-1 shadow-lg sm:gap-1.5">
           <FilterButton active={filter === "ALL"} onClick={() => selectFilter("ALL")}>
             Todo
           </FilterButton>
@@ -553,7 +554,7 @@ function FilterButton({
   return (
     <button
       onClick={onClick}
-      className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
+      className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11px] font-medium transition sm:gap-1.5 sm:px-3 sm:text-sm ${
         active ? "bg-black text-white" : "text-black/70 hover:bg-black/5"
       }`}
     >

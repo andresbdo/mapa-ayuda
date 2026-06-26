@@ -133,6 +133,7 @@ export async function POST(req: NextRequest) {
       contact: data.contact || null,
       contacts: data.contacts,
       instagram: data.instagram || null,
+      instagramPost: data.instagramPost || null,
       temporarilyUnavailable: data.temporarilyUnavailable,
       status: settings.moderationEnabled ? "PENDING" : "APPROVED",
     },
