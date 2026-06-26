@@ -6,7 +6,14 @@ import type { Point } from "@/components/MapView";
 import EditPointModal from "@/components/EditPointModal";
 
 type Tab = "PENDING" | "APPROVED";
-type Section = "points" | "stats" | "tokens";
+type Section = "points" | "stats" | "reports" | "tokens";
+
+type ReportRow = {
+  id: string;
+  text: string;
+  createdAt: string;
+  point: { id: string; name: string; type: string; address: string | null };
+};
 
 type PointsResponse = {
   points: Point[];
@@ -111,8 +118,8 @@ export default function AdminPage() {
         )}
       </div>
 
-      <div className="mb-6 flex gap-1.5">
-        {(["points", "stats", ...(superAdmin ? ["tokens"] : [])] as Section[]).map((s) => (
+      <div className="mb-6 flex flex-wrap gap-1.5">
+        {(["points", "stats", "reports", ...(superAdmin ? ["tokens"] : [])] as Section[]).map((s) => (
           <button
             key={s}
             onClick={() => setSection(s)}
@@ -120,13 +127,14 @@ export default function AdminPage() {
               section === s ? "bg-black text-white" : "bg-black/5 text-black/60"
             }`}
           >
-            {s === "points" ? "Puntos" : s === "stats" ? "Estadísticas" : "Tokens"}
+            {s === "points" ? "Puntos" : s === "stats" ? "Estadísticas" : s === "reports" ? "Reportes" : "Tokens"}
           </button>
         ))}
       </div>
 
       {section === "points" && <PointsSection superAdmin={superAdmin} />}
       {section === "stats" && <StatsSection />}
+      {section === "reports" && <ReportsSection />}
       {section === "tokens" && superAdmin && <TokensSection />}
     </div>
   );
@@ -619,6 +627,59 @@ function TokenForm({
         </div>
       </div>
     </div>
+  );
+}
+
+function ReportsSection() {
+  const [reports, setReports] = useState<ReportRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const r = await fetch("/api/admin/reports");
+    if (r.ok) setReports((await r.json()) as ReportRow[]);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const dismiss = async (id: string) => {
+    await fetch(`/api/admin/reports/${id}`, { method: "DELETE" });
+    void load();
+  };
+
+  if (loading) return <p className="py-12 text-center text-sm text-black/40">Cargando…</p>;
+
+  if (reports.length === 0) {
+    return <p className="py-12 text-center text-sm text-black/40">No hay reportes pendientes.</p>;
+  }
+
+  return (
+    <ul className="space-y-3">
+      {reports.map((r) => (
+        <li key={r.id} className="rounded-2xl border border-black/10 p-4">
+          <div className="mb-2 flex items-start justify-between gap-2">
+            <div>
+              <span className={`text-xs font-semibold uppercase ${r.point.type === "COLLECTION" ? "text-blue-700" : "text-red-700"}`}>
+                {r.point.type === "COLLECTION" ? "Centro de acopio" : "Entrega de ayuda"}
+              </span>
+              <p className="font-semibold">{r.point.name}</p>
+              {r.point.address && <p className="text-sm text-black/55">{r.point.address}</p>}
+            </div>
+            <p className="shrink-0 text-xs text-black/35">
+              {new Date(r.createdAt).toLocaleDateString("es")}
+            </p>
+          </div>
+          <p className="mb-3 rounded-xl bg-black/[0.04] px-3 py-2.5 text-sm text-black/75">{r.text}</p>
+          <button
+            onClick={() => dismiss(r.id)}
+            className="rounded-lg border border-black/15 px-3 py-1.5 text-sm font-medium"
+          >
+            Descartar
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 

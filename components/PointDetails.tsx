@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { contactPhonesFromPoint, phoneToWaMe } from "@/lib/contact";
 import { shortAddress } from "@/lib/address";
 import { DAY_LABELS, formatDayHours, parseSchedule } from "@/lib/schedule";
 import { TYPE_LABELS } from "@/lib/types";
 import type { Point } from "./MapView";
+import ReportModal from "./ReportModal";
 
 export default function PointDetails({
   point,
@@ -15,6 +17,7 @@ export default function PointDetails({
   onClose: () => void;
   onEdit: () => void;
 }) {
+  const [showReport, setShowReport] = useState(false);
   const isCollection = point.type === "COLLECTION";
   const accent = isCollection ? "text-blue-700" : "text-red-700";
   const dot = isCollection ? "bg-blue-600" : "bg-red-600";
@@ -169,7 +172,26 @@ export default function PointDetails({
         >
           Editar punto
         </button>
+        <button
+          onClick={() => setShowReport(true)}
+          className="mt-2 flex w-full items-center justify-center gap-1.5 py-2 text-xs font-medium text-red-500"
+        >
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M8 1.5 1.5 13.5h13L8 1.5Z" />
+            <path d="M8 6v3.5" />
+            <circle cx="8" cy="11.5" r=".5" fill="currentColor" stroke="none" />
+          </svg>
+          Reportar punto
+        </button>
       </div>
+
+      {showReport && (
+        <ReportModal
+          pointId={point.id}
+          pointName={point.name}
+          onClose={() => setShowReport(false)}
+        />
+      )}
     </div>
   );
 }
