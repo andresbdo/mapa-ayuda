@@ -1,12 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { DAYS, TYPE_LABELS, type PointType } from "@/lib/types";
+import { TYPE_LABELS, type PointType } from "@/lib/types";
 import { haversineKm, formatKm } from "@/lib/geo";
 import { displayDateToIso, displayDeadlineToIso } from "@/lib/dates";
 import { normalizeContactPhones, normalizeInstagramHandle, type ContactPhone } from "@/lib/contact";
 import { readApiError } from "@/lib/form-errors";
+import {
+  emptySchedule,
+  serializeScheduleState,
+  type DayKey,
+  type ScheduleMode,
+} from "@/lib/schedule";
 import ContactPhonesEditor from "./ContactPhonesEditor";
+import ScheduleEditor from "./ScheduleEditor";
 
 type GeoResult = {
   lat: string;
@@ -42,10 +49,11 @@ export default function AddPointSheet({
   const [geoLoading, setGeoLoading] = useState(false);
   const [items, setItems] = useState<string[]>([]);
   const [itemInput, setItemInput] = useState("");
-  const [days, setDays] = useState<string[]>([]);
-  const [open24, setOpen24] = useState(false);
-  const [openTime, setOpenTime] = useState("");
-  const [closeTime, setCloseTime] = useState("");
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("GENERAL");
+  const [generalDays, setGeneralDays] = useState<DayKey[]>([]);
+  const [generalOpenTime, setGeneralOpenTime] = useState("");
+  const [generalCloseTime, setGeneralCloseTime] = useState("");
+  const [byDaySchedule, setByDaySchedule] = useState(emptySchedule);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -57,11 +65,6 @@ export default function AddPointSheet({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<null | "PENDING" | "APPROVED">(null);
-
-  const toggleDay = (d: string) =>
-    setDays((prev) =>
-      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]
-    );
 
   const addItem = () => {
     const v = itemInput.trim();
@@ -132,13 +135,13 @@ export default function AddPointSheet({
       setError("La fecha límite no puede ser anterior a la fecha de inicio.");
       return;
     }
-    const hours = open24
-      ? "24 horas"
-      : openTime && closeTime
-        ? `${openTime} a ${closeTime}`
-        : openTime
-          ? `Desde ${openTime}`
-          : "";
+    const { days, hours } = serializeScheduleState({
+      mode: scheduleMode,
+      generalDays,
+      generalOpenTime,
+      generalCloseTime,
+      byDay: byDaySchedule,
+    });
     const normalizedContacts = normalizeContactPhones(contacts);
     setSubmitting(true);
     try {
@@ -365,64 +368,18 @@ export default function AddPointSheet({
           </div>
         </Field>
 
-        <Field label="Días">
-          <div className="flex flex-wrap gap-1.5">
-            {DAYS.map((d) => (
-              <button
-                key={d}
-                onClick={() => toggleDay(d)}
-                className={`rounded-full px-3 py-1.5 text-sm capitalize ${
-                  days.includes(d)
-                    ? "bg-black text-white"
-                    : "bg-black/5 text-black/60"
-                }`}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <div className="mb-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-black/70">Horario</span>
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <span className="text-black/60">Abierto 24 horas</span>
-              <button
-                type="button"
-                onClick={() => setOpen24((v) => !v)}
-                className={`relative h-6 w-11 rounded-full transition ${
-                  open24 ? "bg-blue-600" : "bg-black/20"
-                }`}
-              >
-                <span
-                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
-                    open24 ? "left-[22px]" : "left-0.5"
-                  }`}
-                />
-              </button>
-            </label>
-          </div>
-          {!open24 && (
-            <div className="flex items-center gap-2">
-              <input
-                type="time"
-                value={openTime}
-                onChange={(e) => setOpenTime(e.target.value)}
-                className="input"
-                aria-label="Hora de apertura"
-              />
-              <span className="text-black/40">a</span>
-              <input
-                type="time"
-                value={closeTime}
-                onChange={(e) => setCloseTime(e.target.value)}
-                className="input"
-                aria-label="Hora de cierre"
-              />
-            </div>
-          )}
-        </div>
+        <ScheduleEditor
+          mode={scheduleMode}
+          onModeChange={setScheduleMode}
+          generalDays={generalDays}
+          onGeneralDaysChange={setGeneralDays}
+          generalOpenTime={generalOpenTime}
+          onGeneralOpenTimeChange={setGeneralOpenTime}
+          generalCloseTime={generalCloseTime}
+          onGeneralCloseTimeChange={setGeneralCloseTime}
+          byDay={byDaySchedule}
+          onByDayChange={setByDaySchedule}
+        />
 
         <div className="mb-3 grid gap-2 sm:grid-cols-2">
           <Field label="Inicio">
@@ -437,7 +394,7 @@ export default function AddPointSheet({
             <span className="mb-1 block text-sm font-medium text-black/70">
               Fecha límite
             </span>
-            <div className="grid gap-2 sm:grid-cols-[1fr_6.25rem]">
+            <div className="grid gap-2">
               <input
                 type="date"
                 value={endDate}
@@ -456,7 +413,7 @@ export default function AddPointSheet({
           </div>
         </div>
 
-        <Field label="Dirección / referencia">
+        <Field label="Referencia">
           <input
             value={address}
             onChange={(e) => setAddress(e.target.value)}

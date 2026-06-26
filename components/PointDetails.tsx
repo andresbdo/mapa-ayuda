@@ -1,6 +1,8 @@
 "use client";
 
 import { contactPhonesFromPoint, phoneToWaMe } from "@/lib/contact";
+import { shortAddress } from "@/lib/address";
+import { DAY_LABELS, formatDayHours, parseSchedule } from "@/lib/schedule";
 import { TYPE_LABELS } from "@/lib/types";
 import type { Point } from "./MapView";
 
@@ -17,6 +19,7 @@ export default function PointDetails({
   const accent = isCollection ? "text-blue-700" : "text-red-700";
   const dot = isCollection ? "bg-blue-600" : "bg-red-600";
   const contacts = contactPhonesFromPoint(point.contacts, point.contact);
+  const schedule = parseSchedule(point.days, point.hours);
 
   return (
     <div className="fixed inset-0 z-30 flex items-end justify-center sm:items-center">
@@ -65,10 +68,43 @@ export default function PointDetails({
             <Row label="Fechas" value={formatRange(point.startDate, point.endDate)} />
           )}
           {point.days.length > 0 && (
-            <Row label="Días" value={point.days.join(", ")} />
+            <div className="grid gap-2">
+              <dt className="text-xs font-medium uppercase tracking-wide text-black/40">
+                Horario
+              </dt>
+              <dd className="grid gap-1.5">
+                {schedule.map((row) => (
+                  <div
+                    key={row.day}
+                    className={`grid grid-cols-[2.5rem_1fr] items-center gap-2 rounded-xl px-2.5 py-2 ${
+                      row.enabled ? "bg-black/[0.04]" : "bg-black/[0.02]"
+                    }`}
+                  >
+                    <span
+                      className={`rounded-md px-1.5 py-1 text-center text-[11px] font-bold ${
+                        row.enabled
+                          ? "bg-black text-white"
+                          : "bg-black/10 text-black/35"
+                      }`}
+                    >
+                      {DAY_LABELS[row.day]}
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1.5 ${
+                        row.enabled ? "text-black/75" : "text-black/35"
+                      }`}
+                    >
+                      <ClockIcon />
+                      {formatDayHours(row)}
+                    </span>
+                  </div>
+                ))}
+              </dd>
+            </div>
           )}
-          {point.hours && <Row label="Horario" value={point.hours} />}
-          {point.address && <Row label="Dirección" value={point.address} />}
+          {point.address && (
+            <Row label="Dirección" value={shortAddress(point.address)} />
+          )}
           {point.description && <Row label="Notas" value={point.description} />}
         </dl>
 
@@ -124,6 +160,24 @@ export default function PointDetails({
         </button>
       </div>
     </div>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className="h-3.5 w-3.5 shrink-0 text-black/45"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.7"
+      aria-hidden="true"
+    >
+      <path d="M8 14.25A6.25 6.25 0 1 0 8 1.75a6.25 6.25 0 0 0 0 12.5Z" />
+      <path d="M8 4.75V8l2.2 1.3" />
+    </svg>
   );
 }
 

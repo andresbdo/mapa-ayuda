@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { DAYS, TYPE_LABELS, type PointType } from "@/lib/types";
+import { TYPE_LABELS, type PointType } from "@/lib/types";
 import {
   displayDateToIso,
   displayDeadlineToIso,
@@ -15,37 +15,48 @@ import {
   type ContactPhone,
 } from "@/lib/contact";
 import { readApiError } from "@/lib/form-errors";
+import { inferScheduleState, serializeScheduleState } from "@/lib/schedule";
+import { haversineKm, formatKm } from "@/lib/geo";
 import ContactPhonesEditor from "./ContactPhonesEditor";
+import ScheduleEditor from "./ScheduleEditor";
 import type { Point } from "./MapView";
 
-function parseHours(hours: string | null) {
-  if (hours === "24 horas") return { open24: true, openTime: "", closeTime: "" };
-  const m = hours?.match(/^(\d{2}:\d{2}) a (\d{2}:\d{2})$/);
-  if (m) return { open24: false, openTime: m[1], closeTime: m[2] };
-  return { open24: false, openTime: "", closeTime: "" };
-}
+type GeoResult = {
+  lat: string;
+  lon: string;
+  display_name: string;
+  km?: number;
+};
 
 export default function EditPointModal({
   point,
+  userLoc,
   onClose,
   onSaved,
 }: {
   point: Point;
+  userLoc?: { lat: number; lng: number } | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const h = parseHours(point.hours);
   const [type, setType] = useState<PointType>(point.type);
   const [name, setName] = useState(point.name);
   const [items, setItems] = useState<string[]>(point.items);
   const [itemInput, setItemInput] = useState("");
-  const [days, setDays] = useState<string[]>(point.days);
-  const [open24, setOpen24] = useState(h.open24);
-  const [openTime, setOpenTime] = useState(h.openTime);
-  const [closeTime, setCloseTime] = useState(h.closeTime);
+  const [scheduleState, setScheduleState] = useState(() =>
+    inferScheduleState(point.days, point.hours)
+  );
   const [startDate, setStartDate] = useState(isoToDisplayDate(point.startDate));
   const [endDate, setEndDate] = useState(isoToDisplayDate(point.endDate));
   const [endTime, setEndTime] = useState(isoToDisplayTime(point.endDate));
+  const [loc, setLoc] = useState<{ lat: number; lng: number }>({
+    lat: point.lat,
+    lng: point.lng,
+  });
+  const [locLocked, setLocLocked] = useState(true);
+  const [geoQuery, setGeoQuery] = useState("");
+  const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
+  const [geoLoading, setGeoLoading] = useState(false);
   const [address, setAddress] = useState(point.address ?? "");
   const [contacts, setContacts] = useState<ContactPhone[]>(
     contactPhonesFromPoint(point.contacts, point.contact)
@@ -55,10 +66,41 @@ export default function EditPointModal({
   const [temporarilyUnavailable, setTemporarilyUnavailable] = useState(
     point.temporarilyUnavailable
   );
-  const [lat, setLat] = useState(String(point.lat));
-  const [lng, setLng] = useState(String(point.lng));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const geocode = async () => {
+    if (!geoQuery.trim()) return;
+    setGeoLoading(true);
+    try {
+      const viewbox = userLoc
+        ? `&viewbox=${userLoc.lng - 1},${userLoc.lat + 1},${userLoc.lng + 1},${userLoc.lat - 1}&bounded=0`
+        : "";
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=8&accept-language=${encodeURIComponent(navigator.language)}${viewbox}&q=${encodeURIComponent(geoQuery)}`
+      );
+      let results: GeoResult[] = res.ok ? await res.json() : [];
+      if (userLoc) {
+        results = results
+          .map((r) => ({
+            ...r,
+            km: haversineKm(userLoc, { lat: parseFloat(r.lat), lng: parseFloat(r.lon) }),
+          }))
+          .sort((a, b) => (a.km ?? Infinity) - (b.km ?? Infinity));
+      }
+      setGeoResults(results);
+    } finally {
+      setGeoLoading(false);
+    }
+  };
+
+  const pickResult = (r: GeoResult) => {
+    setLoc({ lat: parseFloat(r.lat), lng: parseFloat(r.lon) });
+    setAddress(r.display_name);
+    setGeoResults([]);
+    setGeoQuery("");
+    setLocLocked(true);
+  };
 
   const addItem = () => {
     const v = itemInput.trim();
@@ -68,19 +110,8 @@ export default function EditPointModal({
   };
   const removeItem = (i: number) =>
     setItems((prev) => prev.filter((_, idx) => idx !== i));
-  const toggleDay = (d: string) =>
-    setDays((prev) =>
-      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]
-    );
-
   const save = async () => {
     setError(null);
-    const latN = parseFloat(lat);
-    const lngN = parseFloat(lng);
-    if (Number.isNaN(latN) || Number.isNaN(lngN)) {
-      setError("Coordenadas inválidas.");
-      return;
-    }
     const startDateIso = displayDateToIso(startDate);
     const endDateIso = displayDeadlineToIso(endDate, endTime);
     if (startDateIso == null || endDateIso == null) {
@@ -91,13 +122,7 @@ export default function EditPointModal({
       setError("La fecha límite no puede ser anterior a la fecha de inicio.");
       return;
     }
-    const hours = open24
-      ? "24 horas"
-      : openTime && closeTime
-        ? `${openTime} a ${closeTime}`
-        : openTime
-          ? `Desde ${openTime}`
-          : "";
+    const { days, hours } = serializeScheduleState(scheduleState);
     const normalizedContacts = normalizeContactPhones(contacts);
     setSaving(true);
     try {
@@ -108,8 +133,8 @@ export default function EditPointModal({
           type,
           name,
           description,
-          lat: latN,
-          lng: lngN,
+          lat: loc.lat,
+          lng: loc.lng,
           address,
           items: itemInput.trim() ? [...items, itemInput.trim()] : items,
           days,
@@ -212,60 +237,26 @@ export default function EditPointModal({
           </div>
         </Field>
 
-        <Field label="Días">
-          <div className="flex flex-wrap gap-1.5">
-            {DAYS.map((d) => (
-              <button
-                key={d}
-                onClick={() => toggleDay(d)}
-                className={`rounded-full px-3 py-1.5 text-sm capitalize ${
-                  days.includes(d) ? "bg-black text-white" : "bg-black/5 text-black/60"
-                }`}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <div className="mb-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-black/70">Horario</span>
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <span className="text-black/60">Abierto 24 horas</span>
-              <button
-                type="button"
-                onClick={() => setOpen24((v) => !v)}
-                className={`relative h-6 w-11 rounded-full transition ${
-                  open24 ? "bg-blue-600" : "bg-black/20"
-                }`}
-              >
-                <span
-                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
-                    open24 ? "left-[22px]" : "left-0.5"
-                  }`}
-                />
-              </button>
-            </label>
-          </div>
-          {!open24 && (
-            <div className="flex items-center gap-2">
-              <input
-                type="time"
-                value={openTime}
-                onChange={(e) => setOpenTime(e.target.value)}
-                className="input"
-              />
-              <span className="text-black/40">a</span>
-              <input
-                type="time"
-                value={closeTime}
-                onChange={(e) => setCloseTime(e.target.value)}
-                className="input"
-              />
-            </div>
-          )}
-        </div>
+        <ScheduleEditor
+          mode={scheduleState.mode}
+          onModeChange={(mode) => setScheduleState((state) => ({ ...state, mode }))}
+          generalDays={scheduleState.generalDays}
+          onGeneralDaysChange={(generalDays) =>
+            setScheduleState((state) => ({ ...state, generalDays }))
+          }
+          generalOpenTime={scheduleState.generalOpenTime}
+          onGeneralOpenTimeChange={(generalOpenTime) =>
+            setScheduleState((state) => ({ ...state, generalOpenTime }))
+          }
+          generalCloseTime={scheduleState.generalCloseTime}
+          onGeneralCloseTimeChange={(generalCloseTime) =>
+            setScheduleState((state) => ({ ...state, generalCloseTime }))
+          }
+          byDay={scheduleState.byDay}
+          onByDayChange={(byDay) =>
+            setScheduleState((state) => ({ ...state, byDay }))
+          }
+        />
 
         <div className="mb-3 grid gap-2 sm:grid-cols-2">
           <Field label="Inicio">
@@ -280,7 +271,7 @@ export default function EditPointModal({
             <span className="mb-1 block text-sm font-medium text-black/70">
               Fecha límite
             </span>
-            <div className="grid gap-2 sm:grid-cols-[1fr_6.25rem]">
+            <div className="grid gap-2">
               <input
                 type="date"
                 value={endDate}
@@ -299,30 +290,95 @@ export default function EditPointModal({
           </div>
         </div>
 
-        <Field label="Dirección / referencia">
+        <div className="mb-4">
+          <span className="mb-1 block text-sm font-medium text-black/70">
+            Ubicación
+          </span>
+          {locLocked ? (
+            <div className="flex items-start justify-between gap-2 rounded-xl bg-green-50 p-3">
+              <div className="text-sm">
+                <p className="font-medium text-green-800">📍 Ubicación fijada</p>
+                {address && (
+                  <p className="mt-0.5 text-green-700/80">{address}</p>
+                )}
+                <p className="mt-0.5 text-xs text-green-700/60">
+                  {loc.lat.toFixed(5)}, {loc.lng.toFixed(5)}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setLocLocked(false);
+                  setGeoQuery("");
+                  setGeoResults([]);
+                }}
+                className="shrink-0 text-sm font-medium text-green-700 underline"
+              >
+                cambiar
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div className="flex gap-2">
+                <input
+                  value={geoQuery}
+                  onChange={(e) => setGeoQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      geocode();
+                    }
+                  }}
+                  placeholder="Buscá una dirección o lugar…"
+                  className="input"
+                />
+                <button
+                  type="button"
+                  onClick={geocode}
+                  disabled={geoLoading}
+                  className="shrink-0 rounded-xl bg-black px-4 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {geoLoading ? "…" : "Buscar"}
+                </button>
+              </div>
+              {geoResults.length > 0 && (
+                <ul className="mt-2 max-h-44 overflow-y-auto rounded-xl border border-black/10">
+                  {geoResults.map((r, i) => (
+                    <li key={i} className="border-b border-black/5 last:border-0">
+                      <button
+                        type="button"
+                        onClick={() => pickResult(r)}
+                        className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-black/5"
+                      >
+                        <span className="flex-1">{r.display_name}</span>
+                        {r.km != null && (
+                          <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                            {formatKm(r.km)}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <button
+                type="button"
+                onClick={() => setLocLocked(true)}
+                className="mt-2 w-full rounded-xl border border-black/10 py-2.5 text-sm font-medium text-black/70"
+              >
+                cancelar
+              </button>
+            </div>
+          )}
+        </div>
+
+        <Field label="Referencia">
           <input
             value={address}
             onChange={(e) => setAddress(e.target.value)}
+            placeholder="Calle, barrio, referencia"
             className="input"
           />
         </Field>
-
-        <div className="mb-3 grid grid-cols-2 gap-2">
-          <Field label="Latitud">
-            <input
-              value={lat}
-              onChange={(e) => setLat(e.target.value)}
-              className="input"
-            />
-          </Field>
-          <Field label="Longitud">
-            <input
-              value={lng}
-              onChange={(e) => setLng(e.target.value)}
-              className="input"
-            />
-          </Field>
-        </div>
 
         <ContactPhonesEditor contacts={contacts} onChange={setContacts} />
 

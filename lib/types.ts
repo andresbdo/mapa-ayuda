@@ -58,7 +58,7 @@ export const pointInputSchema = z
     address: z.string().trim().max(300).optional().or(z.literal("")),
     items: z.array(z.string().trim().min(1).max(60)).max(30).default([]),
     days: z.array(z.enum(DAYS)).max(7).default([]),
-    hours: z.string().trim().max(60).optional().or(z.literal("")),
+    hours: z.string().trim().max(900).optional().or(z.literal("")),
     startDate: dateString,
     endDate: dateTimeString,
     contact: phoneString,

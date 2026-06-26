@@ -6,13 +6,16 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import AddPointSheet from "./AddPointSheet";
 import EditPointModal from "./EditPointModal";
 import PointDetails from "./PointDetails";
+import { shortAddress } from "@/lib/address";
 import type { ContactPhone } from "@/lib/contact";
 import { TYPE_LABELS, type PointType } from "@/lib/types";
+import { DAY_SHORT_LABELS, parseSchedule, todayScheduleSummary } from "@/lib/schedule";
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
 const LOCATION_ENABLED_KEY = "mapa-ayuda-location-enabled";
 const SEARCH_PARAM = "q";
 const TYPE_PARAM = "type";
+const GEOLOCATION_TIMEOUT_MS = 10000;
 
 function getInitialSearch(): string {
   if (typeof window === "undefined") return "";
@@ -84,11 +87,37 @@ function dateRange(start: string | null, end: string | null): string {
 function labelHtml(p: Point): string {
   const color = p.type === "COLLECTION" ? "#2563eb" : "#dc2626";
   const dates = dateRange(p.startDate, p.endDate);
+  const schedule = parseSchedule(p.days, p.hours);
+  const hours = todayScheduleSummary(p.days, p.hours);
+  const calendarIcon =
+    '<span class="ml-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M4 1.75v2.5M12 1.75v2.5M2.75 6.25h10.5M3.5 3.25h9A1.75 1.75 0 0 1 14.25 5v7.5a1.75 1.75 0 0 1-1.75 1.75h-9a1.75 1.75 0 0 1-1.75-1.75V5A1.75 1.75 0 0 1 3.5 3.25Z"/></svg></span>';
+  const clockIcon =
+    '<span class="ml-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 14.25A6.25 6.25 0 1 0 8 1.75a6.25 6.25 0 0 0 0 12.5Z"/><path d="M8 4.75V8l2.2 1.3"/></svg></span>';
+  const pinIcon =
+    '<span class="ml-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M12.75 6.75c0 3.25-4.75 7.5-4.75 7.5s-4.75-4.25-4.75-7.5a4.75 4.75 0 1 1 9.5 0Z"/><path d="M8 8.25a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg></span>';
+  const dayGrid = `<div class="ml-days">${schedule
+    .map(
+      (row) =>
+        `<span class="ml-day ${row.enabled ? "ml-day-open" : "ml-day-closed"}">${DAY_SHORT_LABELS[row.day]}</span>`
+    )
+    .join("")}</div>`;
+  const itemChips =
+    p.items.length > 0
+      ? `<div class="ml-items"><div class="ml-items-label">${
+          p.type === "COLLECTION" ? "Reciben" : "Entregan"
+        }</div><div class="ml-item-list">${p.items
+          .slice(0, 4)
+          .map((item) => `<strong>${escapeHtml(item)}</strong>`)
+          .join('<span class="ml-comma">, </span>')}</div></div>`
+      : "";
   const rows = [
-    p.items.length > 0 ? escapeHtml(p.items.slice(0, 4).join(", ")) : "",
-    p.days.length > 0 ? `📅 ${escapeHtml(p.days.join(", "))}` : "",
-    dates ? `🗓 ${escapeHtml(dates)}` : "",
-    p.hours ? `🕐 ${escapeHtml(p.hours)}` : "",
+    itemChips,
+    p.days.length > 0 ? dayGrid : "",
+    dates ? `<span class="ml-row-with-icon">${calendarIcon}${escapeHtml(dates)}</span>` : "",
+    hours ? `<span class="ml-row-with-icon">${clockIcon}${escapeHtml(hours)}</span>` : "",
+    p.address
+      ? `<span class="ml-row-with-icon ml-address-row">${pinIcon}${escapeHtml(shortAddress(p.address))}</span>`
+      : "",
   ].filter(Boolean);
   return `
     <div class="ml-type" style="color:${color}">${escapeHtml(TYPE_LABELS[p.type])}</div>
@@ -143,6 +172,42 @@ export default function MapView() {
   const loadPoints = useCallback(async () => {
     const res = await fetch("/api/points");
     if (res.ok) setPoints(await res.json());
+  }, []);
+
+  const locateUser = useCallback((rememberChoice: boolean) => {
+    if (!navigator.geolocation) {
+      setLocating(false);
+      setShowLocationPrompt(false);
+      localStorage.removeItem(LOCATION_ENABLED_KEY);
+      return;
+    }
+
+    setLocating(true);
+    setShowLocationPrompt(false);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const nextLoc = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        setUserLoc(nextLoc);
+        setLocating(false);
+        if (rememberChoice) localStorage.setItem(LOCATION_ENABLED_KEY, "true");
+        mapRef.current?.flyTo({
+          center: [nextLoc.lng, nextLoc.lat],
+          zoom: Math.max(mapRef.current.getZoom(), 13),
+        });
+      },
+      () => {
+        setLocating(false);
+        localStorage.removeItem(LOCATION_ENABLED_KEY);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 60000,
+        timeout: GEOLOCATION_TIMEOUT_MS,
+      }
+    );
   }, []);
 
   useEffect(() => {
@@ -211,15 +276,6 @@ export default function MapView() {
       });
       map.addControl(geolocate, "bottom-right");
       geolocateRef.current = geolocate;
-      geolocate.on("geolocate", (e: { coords: GeolocationCoordinates }) => {
-        setUserLoc({ lat: e.coords.latitude, lng: e.coords.longitude });
-        setLocating(false);
-        localStorage.setItem(LOCATION_ENABLED_KEY, "true");
-      });
-      geolocate.on("error", () => {
-        setLocating(false);
-        localStorage.removeItem(LOCATION_ENABLED_KEY);
-      });
       map.on("load", () => {
         if (cancelled) return;
         const shouldLocate =
@@ -230,8 +286,7 @@ export default function MapView() {
           "geolocation" in navigator && !shouldLocate && !initialSearch
         );
         if (shouldLocate) {
-          setLocating(true);
-          geolocate.trigger();
+          locateUser(false);
         }
         if (initialSearch && !appliedInitialSearchRef.current) {
           appliedInitialSearchRef.current = true;
@@ -254,7 +309,7 @@ export default function MapView() {
       mapRef.current = null;
       geolocateRef.current = null;
     };
-  }, [geocodeSearch, loadPoints]);
+  }, [geocodeSearch, loadPoints, locateUser]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -310,11 +365,7 @@ export default function MapView() {
   }, [points, filter]);
 
   const requestLocation = () => {
-    setShowLocationPrompt(false);
-    if (!navigator.geolocation) return;
-
-    setLocating(true);
-    geolocateRef.current?.trigger();
+    locateUser(true);
   };
 
   const runSearch = async (e: React.FormEvent) => {
@@ -336,6 +387,16 @@ export default function MapView() {
           <div className="flex flex-col items-center gap-3 rounded-3xl bg-white px-8 py-7 text-black/60 shadow-2xl">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-black/15 border-t-blue-600" />
             <p className="text-sm">Ubicándote…</p>
+            <button
+              type="button"
+              onClick={() => {
+                setLocating(false);
+                localStorage.removeItem(LOCATION_ENABLED_KEY);
+              }}
+              className="rounded-full px-3 py-1.5 text-xs font-medium text-black/45 hover:bg-black/5"
+            >
+              Usar sin ubicación
+            </button>
           </div>
         </div>
       )}
@@ -466,6 +527,7 @@ export default function MapView() {
       {editing && (
         <EditPointModal
           point={editing}
+          userLoc={userLoc}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
