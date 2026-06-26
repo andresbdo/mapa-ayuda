@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum PointType {
+  COLLECTION
+  DELIVERY
+}
+
+enum PointStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Point {
+  id            String      @id @default(cuid())
+  type          PointType
+  name          String
+  description   String?
+  lat           Float
+  lng           Float
+  address       String?
+  items         String[]
+  days          String[]
+  hours         String?
+  startDate     DateTime?
+  endDate       DateTime?
+  contact       String?
+  status        PointStatus @default(PENDING)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([status])
+  @@index([type])
+  @@index([lat, lng])
+}
+
+model Settings {
+  id                String   @id @default("global")
+  moderationEnabled Boolean  @default(true)
+  updatedAt         DateTime @updatedAt
+}

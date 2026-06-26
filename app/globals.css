@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+.input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+.input:focus {
+  border-color: #2563eb;
+}
+
+.marker-pin {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  border: 3px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.marker-collection {
+  background: #2563eb;
+}
+
+.marker-delivery {
+  background: #dc2626;
+}
+
+.marker-label {
+  position: absolute;
+  left: 50%;
+  bottom: 36px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 180px;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  padding: 6px 9px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #444;
+  text-align: center;
+  pointer-events: none;
+  white-space: normal;
+  z-index: 1;
+}
+.marker-label .ml-type {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.marker-label .ml-name {
+  font-weight: 700;
+  font-size: 12px;
+  color: #111111;
+  margin-bottom: 1px;
+}
