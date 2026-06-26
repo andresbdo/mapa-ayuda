@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import AddPointSheet from "./AddPointSheet";
+import EditPointModal from "./EditPointModal";
 import PointDetails from "./PointDetails";
 import { TYPE_LABELS, type PointType } from "@/lib/types";
 
@@ -26,10 +27,19 @@ function fmtDate(d: string): string {
   });
 }
 
+function fmtDateTime(d: string): string {
+  return new Date(d).toLocaleString("es", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function dateRange(start: string | null, end: string | null): string {
-  if (start && end) return `${fmtDate(start)} – ${fmtDate(end)}`;
+  if (start && end) return `${fmtDate(start)} – ${fmtDateTime(end)}`;
   if (start) return `desde ${fmtDate(start)}`;
-  if (end) return `hasta ${fmtDate(end)}`;
+  if (end) return `hasta ${fmtDateTime(end)}`;
   return "";
 }
 
@@ -81,6 +91,7 @@ export default function MapView() {
   );
   const [draft, setDraft] = useState<{ lat: number; lng: number } | null>(null);
   const [selected, setSelected] = useState<Point | null>(null);
+  const [editing, setEditing] = useState<Point | null>(null);
   const [search, setSearch] = useState("");
   const [searching, setSearching] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -355,7 +366,25 @@ export default function MapView() {
       )}
 
       {selected && (
-        <PointDetails point={selected} onClose={() => setSelected(null)} />
+        <PointDetails
+          point={selected}
+          onClose={() => setSelected(null)}
+          onEdit={() => {
+            setEditing(selected);
+            setSelected(null);
+          }}
+        />
+      )}
+
+      {editing && (
+        <EditPointModal
+          point={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            loadPoints();
+          }}
+        />
       )}
     </div>
   );

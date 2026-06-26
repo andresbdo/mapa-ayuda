@@ -6,9 +6,11 @@ import type { Point } from "./MapView";
 export default function PointDetails({
   point,
   onClose,
+  onEdit,
 }: {
   point: Point;
   onClose: () => void;
+  onEdit: () => void;
 }) {
   const isCollection = point.type === "COLLECTION";
   const accent = isCollection ? "text-blue-700" : "text-red-700";
@@ -75,13 +77,20 @@ export default function PointDetails({
         )}
 
         <a
-          href={`https://www.openstreetmap.org/?mlat=${point.lat}&mlon=${point.lng}#map=17/${point.lat}/${point.lng}`}
+          href={`https://www.google.com/maps/search/?api=1&query=${point.lat},${point.lng}`}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-2 block w-full rounded-xl border border-black/10 py-3 text-center text-sm font-medium"
         >
-          Cómo llegar
+          Abrir en Google Maps
         </a>
+
+        <button
+          onClick={onEdit}
+          className="mt-2 w-full rounded-xl border border-black/10 py-3 text-sm font-medium"
+        >
+          Editar punto
+        </button>
       </div>
     </div>
   );
@@ -95,10 +104,19 @@ function fmt(d: string) {
   });
 }
 
+function fmtWithTime(d: string) {
+  return new Date(d).toLocaleString("es", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatRange(start: string | null, end: string | null) {
-  if (start && end) return `${fmt(start)} – ${fmt(end)}`;
+  if (start && end) return `${fmt(start)} – ${fmtWithTime(end)}`;
   if (start) return `Desde ${fmt(start)}`;
-  return `Hasta ${fmt(end!)}`;
+  return `Hasta ${fmtWithTime(end!)}`;
 }
 
 function Row({ label, value }: { label: string; value: string }) {

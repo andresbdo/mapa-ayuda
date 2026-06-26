@@ -21,8 +21,7 @@ export async function GET(req: NextRequest) {
     where.status = status as Prisma.PointWhereInput["status"];
   } else {
     where.status = "APPROVED";
-    const startOfToday = new Date(new Date().toISOString().slice(0, 10));
-    where.OR = [{ endDate: null }, { endDate: { gte: startOfToday } }];
+    where.OR = [{ endDate: null }, { endDate: { gte: new Date() } }];
   }
 
   const minLat = parseFloat(searchParams.get("minLat") ?? "");

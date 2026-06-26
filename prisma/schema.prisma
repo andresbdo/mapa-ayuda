@@ -36,10 +36,31 @@ model Point {
   status        PointStatus @default(PENDING)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+  editHistory   PointEditHistory[]
 
   @@index([status])
   @@index([type])
   @@index([lat, lng])
+}
+
+model PointEditHistory {
+  id        String   @id @default(cuid())
+  pointId   String
+  point     Point    @relation(fields: [pointId], references: [id], onDelete: Cascade)
+  editorIp  String?
+  before    Json
+  after     Json
+  createdAt DateTime @default(now())
+
+  @@index([pointId])
+  @@index([createdAt])
+}
+
+model EditIpBlacklist {
+  id        String   @id @default(cuid())
+  ip        String   @unique
+  reason    String?
+  createdAt DateTime @default(now())
 }
 
 model Settings {

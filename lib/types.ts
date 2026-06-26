@@ -11,6 +11,14 @@ const dateString = z
   .optional()
   .or(z.literal(""));
 
+const dateTimeString = z
+  .string()
+  .refine((value) => !value || !Number.isNaN(new Date(value).getTime()), {
+    message: "Fecha inválida",
+  })
+  .optional()
+  .or(z.literal(""));
+
 export const pointInputSchema = z
   .object({
     type: z.enum(POINT_TYPES),
@@ -23,7 +31,7 @@ export const pointInputSchema = z
     days: z.array(z.enum(DAYS)).max(7).default([]),
     hours: z.string().trim().max(60).optional().or(z.literal("")),
     startDate: dateString,
-    endDate: dateString,
+    endDate: dateTimeString,
     contact: z.string().trim().max(120).optional().or(z.literal("")),
   })
   .refine(

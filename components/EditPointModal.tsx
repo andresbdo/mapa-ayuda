@@ -2,6 +2,13 @@
 
 import { useState } from "react";
 import { DAYS, TYPE_LABELS, type PointType } from "@/lib/types";
+import {
+  displayDateToIso,
+  displayDeadlineToIso,
+  formatDateInput,
+  isoToDisplayDate,
+  isoToDisplayTime,
+} from "@/lib/dates";
 import type { Point } from "./MapView";
 
 function parseHours(hours: string | null) {
@@ -9,10 +16,6 @@ function parseHours(hours: string | null) {
   const m = hours?.match(/^(\d{2}:\d{2}) a (\d{2}:\d{2})$/);
   if (m) return { open24: false, openTime: m[1], closeTime: m[2] };
   return { open24: false, openTime: "", closeTime: "" };
-}
-
-function toDateInput(iso: string | null) {
-  return iso ? new Date(iso).toISOString().slice(0, 10) : "";
 }
 
 export default function EditPointModal({
@@ -33,8 +36,9 @@ export default function EditPointModal({
   const [open24, setOpen24] = useState(h.open24);
   const [openTime, setOpenTime] = useState(h.openTime);
   const [closeTime, setCloseTime] = useState(h.closeTime);
-  const [startDate, setStartDate] = useState(toDateInput(point.startDate));
-  const [endDate, setEndDate] = useState(toDateInput(point.endDate));
+  const [startDate, setStartDate] = useState(isoToDisplayDate(point.startDate));
+  const [endDate, setEndDate] = useState(isoToDisplayDate(point.endDate));
+  const [endTime, setEndTime] = useState(isoToDisplayTime(point.endDate));
   const [address, setAddress] = useState(point.address ?? "");
   const [contact, setContact] = useState(point.contact ?? "");
   const [description, setDescription] = useState(point.description ?? "");
@@ -64,6 +68,16 @@ export default function EditPointModal({
       setError("Coordenadas inválidas.");
       return;
     }
+    const startDateIso = displayDateToIso(startDate);
+    const endDateIso = displayDeadlineToIso(endDate, endTime);
+    if (startDateIso == null || endDateIso == null) {
+      setError("Usá fechas con formato día/mes/año, por ejemplo 31/12/2026.");
+      return;
+    }
+    if (startDateIso && endDateIso && endDateIso < startDateIso) {
+      setError("La fecha límite no puede ser anterior a la fecha de inicio.");
+      return;
+    }
     const hours = open24
       ? "24 horas"
       : openTime && closeTime
@@ -86,8 +100,8 @@ export default function EditPointModal({
           items: itemInput.trim() ? [...items, itemInput.trim()] : items,
           days,
           hours,
-          startDate,
-          endDate,
+          startDate: startDateIso,
+          endDate: endDateIso,
           contact,
         }),
       });
@@ -243,23 +257,37 @@ export default function EditPointModal({
         </div>
 
         <div className="mb-3 grid grid-cols-2 gap-2">
-          <Field label="Desde (fecha)">
+          <Field label="Inicio">
             <input
-              type="date"
+              inputMode="numeric"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => setStartDate(formatDateInput(e.target.value))}
+              placeholder="dd/mm/aaaa"
               className="input"
             />
           </Field>
-          <Field label="Hasta (fecha)">
-            <input
-              type="date"
-              value={endDate}
-              min={startDate || undefined}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="input"
-            />
-          </Field>
+          <div>
+            <span className="mb-1 block text-sm font-medium text-black/70">
+              Fecha límite
+            </span>
+            <div className="grid grid-cols-[1fr_6.25rem] gap-2">
+              <input
+                inputMode="numeric"
+                value={endDate}
+                onChange={(e) => setEndDate(formatDateInput(e.target.value))}
+                placeholder="dd/mm/aaaa"
+                className="input"
+                aria-label="Fecha límite"
+              />
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                className="input"
+                aria-label="Hora límite"
+              />
+            </div>
+          </div>
         </div>
 
         <Field label="Dirección / referencia">

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { DAYS, TYPE_LABELS, type PointType } from "@/lib/types";
 import { haversineKm, formatKm } from "@/lib/geo";
+import { displayDateToIso, displayDeadlineToIso, formatDateInput } from "@/lib/dates";
 
 type GeoResult = {
   lat: string;
@@ -44,6 +45,7 @@ export default function AddPointSheet({
   const [closeTime, setCloseTime] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [address, setAddress] = useState("");
   const [contact, setContact] = useState("");
   const [description, setDescription] = useState("");
@@ -115,6 +117,16 @@ export default function AddPointSheet({
       setError("Poné un nombre.");
       return;
     }
+    const startDateIso = displayDateToIso(startDate);
+    const endDateIso = displayDeadlineToIso(endDate, endTime);
+    if (startDateIso == null || endDateIso == null) {
+      setError("Usá fechas con formato día/mes/año, por ejemplo 31/12/2026.");
+      return;
+    }
+    if (startDateIso && endDateIso && endDateIso < startDateIso) {
+      setError("La fecha límite no puede ser anterior a la fecha de inicio.");
+      return;
+    }
     const hours = open24
       ? "24 horas"
       : openTime && closeTime
@@ -137,8 +149,8 @@ export default function AddPointSheet({
           items: itemInput.trim() ? [...items, itemInput.trim()] : items,
           days,
           hours,
-          startDate,
-          endDate,
+          startDate: startDateIso,
+          endDate: endDateIso,
           contact,
         }),
       });
@@ -408,23 +420,37 @@ export default function AddPointSheet({
         </div>
 
         <div className="mb-3 grid grid-cols-2 gap-2">
-          <Field label="Desde (fecha)">
+          <Field label="Inicio">
             <input
-              type="date"
+              inputMode="numeric"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => setStartDate(formatDateInput(e.target.value))}
+              placeholder="dd/mm/aaaa"
               className="input"
             />
           </Field>
-          <Field label="Hasta (fecha)">
-            <input
-              type="date"
-              value={endDate}
-              min={startDate || undefined}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="input"
-            />
-          </Field>
+          <div>
+            <span className="mb-1 block text-sm font-medium text-black/70">
+              Fecha límite
+            </span>
+            <div className="grid grid-cols-[1fr_6.25rem] gap-2">
+              <input
+                inputMode="numeric"
+                value={endDate}
+                onChange={(e) => setEndDate(formatDateInput(e.target.value))}
+                placeholder="dd/mm/aaaa"
+                className="input"
+                aria-label="Fecha límite"
+              />
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                className="input"
+                aria-label="Hora límite"
+              />
+            </div>
+          </div>
         </div>
 
         <Field label="Dirección / referencia">
