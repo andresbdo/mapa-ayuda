@@ -6,6 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import AddPointSheet from "./AddPointSheet";
 import EditPointModal from "./EditPointModal";
 import PointDetails from "./PointDetails";
+import type { ContactPhone } from "@/lib/contact";
 import { TYPE_LABELS, type PointType } from "@/lib/types";
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
@@ -54,6 +55,7 @@ function labelHtml(p: Point): string {
   ].filter(Boolean);
   return `
     <div class="ml-type" style="color:${color}">${escapeHtml(TYPE_LABELS[p.type])}</div>
+    ${p.temporarilyUnavailable ? '<div class="ml-unavailable">No disponible</div>' : ""}
     <div class="ml-name">${escapeHtml(p.name)}</div>
     ${rows.map((r) => `<div class="ml-row">${r}</div>`).join("")}`;
 }
@@ -72,6 +74,9 @@ export type Point = {
   startDate: string | null;
   endDate: string | null;
   contact: string | null;
+  contacts: ContactPhone[];
+  instagram: string | null;
+  temporarilyUnavailable: boolean;
 };
 
 type Filter = "ALL" | PointType;
@@ -194,7 +199,9 @@ export default function MapView() {
       el.textContent = point.type === "DELIVERY" ? "✚" : "";
 
       const label = document.createElement("div");
-      label.className = "marker-label";
+      label.className = `marker-label${
+        point.temporarilyUnavailable ? " marker-label-unavailable" : ""
+      }`;
       label.innerHTML = labelHtml(point);
       el.appendChild(label);
 

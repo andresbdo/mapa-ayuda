@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/auth";
+import { getSettings } from "@/lib/settings";
 import { pointInputSchema } from "@/lib/types";
+import { isInsideVenezuela } from "@/lib/venezuela";
 
 function getClientIp(req: NextRequest): string | null {
   const forwarded = req.headers.get("x-forwarded-for");
@@ -26,7 +29,10 @@ function pointSnapshot(point: {
   startDate: Date | null;
   endDate: Date | null;
   contact: string | null;
-}) {
+  contacts: Prisma.JsonValue;
+  instagram: string | null;
+  temporarilyUnavailable: boolean;
+}): Prisma.InputJsonObject {
   return {
     type: point.type,
     name: point.name,
@@ -40,6 +46,9 @@ function pointSnapshot(point: {
     startDate: point.startDate?.toISOString() ?? null,
     endDate: point.endDate?.toISOString() ?? null,
     contact: point.contact,
+    contacts: (point.contacts ?? []) as Prisma.InputJsonValue,
+    instagram: point.instagram,
+    temporarilyUnavailable: point.temporarilyUnavailable,
   };
 }
 
@@ -74,10 +83,26 @@ export async function PATCH(
       );
     }
     const d = parsed.data;
+    const settings = await getSettings();
+    let restrictionError = false;
     const point = await prisma
       .$transaction(async (tx) => {
         const before = await tx.point.findUnique({ where: { id } });
         if (!before) return null;
+
+        const typeChanged = before.type !== d.type;
+        const locationChanged =
+          Math.abs(before.lat - d.lat) > 0.000001 ||
+          Math.abs(before.lng - d.lng) > 0.000001;
+        if (
+          settings.restrictDeliveryToVenezuela &&
+          d.type === "DELIVERY" &&
+          (typeChanged || locationChanged) &&
+          !isInsideVenezuela(d.lat, d.lng)
+        ) {
+          restrictionError = true;
+          return null;
+        }
 
         const after = await tx.point.update({
           where: { id },
@@ -94,6 +119,10 @@ export async function PATCH(
             startDate: d.startDate ? new Date(d.startDate) : null,
             endDate: d.endDate ? new Date(d.endDate) : null,
             contact: d.contact || null,
+            contacts: d.contacts,
+            instagram: d.instagram || null,
+            temporarilyUnavailable: d.temporarilyUnavailable,
+            status: before.status,
           },
         });
 
@@ -111,6 +140,21 @@ export async function PATCH(
       .catch(() => null);
 
     if (!point) {
+      if (restrictionError) {
+        return NextResponse.json(
+          {
+            error:
+              "Los puntos de entrega de ayuda sólo pueden estar dentro de Venezuela.",
+            issues: {
+              fieldErrors: {
+                lat: ["La ubicación debe estar dentro de Venezuela."],
+                lng: ["La ubicación debe estar dentro de Venezuela."],
+              },
+            },
+          },
+          { status: 400 }
+        );
+      }
       return NextResponse.json({ error: "No encontrado" }, { status: 404 });
     }
     return NextResponse.json(point);

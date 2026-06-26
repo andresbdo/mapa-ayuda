@@ -5,10 +5,17 @@ import { DAYS, TYPE_LABELS, type PointType } from "@/lib/types";
 import {
   displayDateToIso,
   displayDeadlineToIso,
-  formatDateInput,
   isoToDisplayDate,
   isoToDisplayTime,
 } from "@/lib/dates";
+import {
+  contactPhonesFromPoint,
+  normalizeContactPhones,
+  normalizeInstagramHandle,
+  type ContactPhone,
+} from "@/lib/contact";
+import { readApiError } from "@/lib/form-errors";
+import ContactPhonesEditor from "./ContactPhonesEditor";
 import type { Point } from "./MapView";
 
 function parseHours(hours: string | null) {
@@ -40,8 +47,14 @@ export default function EditPointModal({
   const [endDate, setEndDate] = useState(isoToDisplayDate(point.endDate));
   const [endTime, setEndTime] = useState(isoToDisplayTime(point.endDate));
   const [address, setAddress] = useState(point.address ?? "");
-  const [contact, setContact] = useState(point.contact ?? "");
+  const [contacts, setContacts] = useState<ContactPhone[]>(
+    contactPhonesFromPoint(point.contacts, point.contact)
+  );
+  const [instagram, setInstagram] = useState(point.instagram ?? "");
   const [description, setDescription] = useState(point.description ?? "");
+  const [temporarilyUnavailable, setTemporarilyUnavailable] = useState(
+    point.temporarilyUnavailable
+  );
   const [lat, setLat] = useState(String(point.lat));
   const [lng, setLng] = useState(String(point.lng));
   const [saving, setSaving] = useState(false);
@@ -71,7 +84,7 @@ export default function EditPointModal({
     const startDateIso = displayDateToIso(startDate);
     const endDateIso = displayDeadlineToIso(endDate, endTime);
     if (startDateIso == null || endDateIso == null) {
-      setError("Usá fechas con formato día/mes/año, por ejemplo 31/12/2026.");
+      setError("Revisá las fechas. Usá el selector de calendario.");
       return;
     }
     if (startDateIso && endDateIso && endDateIso < startDateIso) {
@@ -85,6 +98,7 @@ export default function EditPointModal({
         : openTime
           ? `Desde ${openTime}`
           : "";
+    const normalizedContacts = normalizeContactPhones(contacts);
     setSaving(true);
     try {
       const res = await fetch(`/api/points/${point.id}`, {
@@ -102,17 +116,14 @@ export default function EditPointModal({
           hours,
           startDate: startDateIso,
           endDate: endDateIso,
-          contact,
+          contact: normalizedContacts[0]?.phone ?? "",
+          contacts: normalizedContacts,
+          instagram: normalizeInstagramHandle(instagram),
+          temporarilyUnavailable,
         }),
       });
       if (!res.ok) {
-        const b = (await res.json().catch(() => null)) as {
-          issues?: { fieldErrors?: Record<string, string[]> };
-        } | null;
-        const fe = b?.issues?.fieldErrors
-          ? Object.values(b.issues.fieldErrors).flat()[0]
-          : null;
-        setError(fe || "No se pudo guardar.");
+        setError(await readApiError(res, "No se pudo guardar. Revisá los campos."));
         return;
       }
       onSaved();
@@ -256,13 +267,12 @@ export default function EditPointModal({
           )}
         </div>
 
-        <div className="mb-3 grid grid-cols-2 gap-2">
+        <div className="mb-3 grid gap-2 sm:grid-cols-2">
           <Field label="Inicio">
             <input
-              inputMode="numeric"
+              type="date"
               value={startDate}
-              onChange={(e) => setStartDate(formatDateInput(e.target.value))}
-              placeholder="dd/mm/aaaa"
+              onChange={(e) => setStartDate(e.target.value)}
               className="input"
             />
           </Field>
@@ -270,12 +280,11 @@ export default function EditPointModal({
             <span className="mb-1 block text-sm font-medium text-black/70">
               Fecha límite
             </span>
-            <div className="grid grid-cols-[1fr_6.25rem] gap-2">
+            <div className="grid gap-2 sm:grid-cols-[1fr_6.25rem]">
               <input
-                inputMode="numeric"
+                type="date"
                 value={endDate}
-                onChange={(e) => setEndDate(formatDateInput(e.target.value))}
-                placeholder="dd/mm/aaaa"
+                onChange={(e) => setEndDate(e.target.value)}
                 className="input"
                 aria-label="Fecha límite"
               />
@@ -315,13 +324,41 @@ export default function EditPointModal({
           </Field>
         </div>
 
-        <Field label="Contacto (WhatsApp / teléfono)">
+        <ContactPhonesEditor contacts={contacts} onChange={setContacts} />
+
+        <Field label="Instagram">
           <input
-            value={contact}
-            onChange={(e) => setContact(e.target.value)}
+            value={instagram}
+            onChange={(e) => setInstagram(e.target.value)}
+            onBlur={() => setInstagram(normalizeInstagramHandle(instagram))}
+            placeholder="@usuario"
             className="input"
           />
         </Field>
+
+        <div className="mb-3 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 p-3">
+          <div>
+            <p className="text-sm font-semibold text-red-700">
+              No disponible temporalmente
+            </p>
+            <p className="text-xs text-red-700/70">
+              Mostrará una etiqueta roja en el mapa.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setTemporarilyUnavailable((v) => !v)}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+              temporarilyUnavailable ? "bg-red-600" : "bg-black/20"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
+                temporarilyUnavailable ? "left-[22px]" : "left-0.5"
+              }`}
+            />
+          </button>
+        </div>
 
         <Field label="Notas">
           <textarea

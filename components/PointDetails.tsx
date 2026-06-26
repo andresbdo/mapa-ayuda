@@ -1,5 +1,6 @@
 "use client";
 
+import { contactPhonesFromPoint, phoneToWaMe } from "@/lib/contact";
 import { TYPE_LABELS } from "@/lib/types";
 import type { Point } from "./MapView";
 
@@ -15,6 +16,7 @@ export default function PointDetails({
   const isCollection = point.type === "COLLECTION";
   const accent = isCollection ? "text-blue-700" : "text-red-700";
   const dot = isCollection ? "bg-blue-600" : "bg-red-600";
+  const contacts = contactPhonesFromPoint(point.contacts, point.contact);
 
   return (
     <div className="fixed inset-0 z-30 flex items-end justify-center sm:items-center">
@@ -29,6 +31,11 @@ export default function PointDetails({
               {TYPE_LABELS[point.type]}
             </span>
             <h2 className="text-xl font-bold">{point.name}</h2>
+            {point.temporarilyUnavailable && (
+              <span className="mt-1 inline-flex rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold uppercase text-white">
+                No disponible
+              </span>
+            )}
           </div>
           <button onClick={onClose} className="text-2xl leading-none text-black/40">
             ×
@@ -65,25 +72,49 @@ export default function PointDetails({
           {point.description && <Row label="Notas" value={point.description} />}
         </dl>
 
-        {point.contact && (
+        <div className="mt-4 grid gap-2">
           <a
-            href={`https://wa.me/${point.contact.replace(/[^0-9]/g, "")}`}
+            href={`https://www.google.com/maps/search/?api=1&query=${point.lat},${point.lng}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-4 block w-full rounded-xl bg-green-600 py-3 text-center text-sm font-semibold text-white"
+            className="block w-full rounded-xl bg-blue-600 py-3 text-center text-sm font-semibold text-white"
           >
-            Contactar: {point.contact}
+            Abrir en Google Maps
           </a>
-        )}
 
-        <a
-          href={`https://www.google.com/maps/search/?api=1&query=${point.lat},${point.lng}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-2 block w-full rounded-xl border border-black/10 py-3 text-center text-sm font-medium"
-        >
-          Abrir en Google Maps
-        </a>
+          {contacts.length > 0 && (
+            <div className="grid gap-2">
+              {contacts.map((contact) => (
+                <a
+                  key={contact.phone}
+                  href={
+                    contact.whatsapp
+                      ? `https://wa.me/${phoneToWaMe(contact.phone)}`
+                      : `tel:${contact.phone}`
+                  }
+                  target={contact.whatsapp ? "_blank" : undefined}
+                  rel={contact.whatsapp ? "noopener noreferrer" : undefined}
+                  className={`block w-full rounded-xl py-3 text-center text-sm font-semibold text-white ${
+                    contact.whatsapp ? "bg-green-600" : "bg-black"
+                  }`}
+                >
+                  {contact.whatsapp ? "WhatsApp" : "Llamar"} {contact.phone}
+                </a>
+              ))}
+            </div>
+          )}
+
+          {point.instagram && (
+            <a
+              href={`https://www.instagram.com/${point.instagram}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full rounded-xl bg-pink-600 py-3 text-center text-sm font-semibold text-white"
+            >
+              Instagram @{point.instagram}
+            </a>
+          )}
+        </div>
 
         <button
           onClick={onEdit}

@@ -70,7 +70,7 @@ button:disabled {
 .marker-label {
   position: absolute;
   left: 50%;
-  bottom: 36px;
+  bottom: 30px;
   transform: translateX(-50%);
   width: max-content;
   max-width: 180px;
@@ -82,15 +82,30 @@ button:disabled {
   line-height: 1.35;
   color: #444;
   text-align: center;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
   white-space: normal;
   z-index: 1;
+}
+.marker-label-unavailable {
+  border: 2px solid #dc2626;
 }
 .marker-label .ml-type {
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+.marker-label .ml-unavailable {
+  display: inline-flex;
+  margin-bottom: 3px;
+  border-radius: 9999px;
+  background: #dc2626;
+  padding: 2px 6px;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 .marker-label .ml-name {
   font-weight: 700;

@@ -6,6 +6,17 @@ import type { Point } from "@/components/MapView";
 import EditPointModal from "@/components/EditPointModal";
 
 type Tab = "PENDING" | "APPROVED";
+type PointsResponse = {
+  points: Point[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
+const PAGE_SIZE = 10;
 
 export default function AdminPage() {
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -14,9 +25,17 @@ export default function AdminPage() {
 
   const [moderation, setModeration] = useState(true);
   const [savedMod, setSavedMod] = useState(true);
+  const [restrictDeliveryToVenezuela, setRestrictDeliveryToVenezuela] =
+    useState(true);
+  const [savedRestrictDeliveryToVenezuela, setSavedRestrictDeliveryToVenezuela] =
+    useState(true);
   const [savingMod, setSavingMod] = useState(false);
   const [tab, setTab] = useState<Tab>("PENDING");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [points, setPoints] = useState<Point[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [editing, setEditing] = useState<Point | null>(null);
 
   useEffect(() => {
@@ -25,25 +44,47 @@ export default function AdminPage() {
       .then((d) => setAuthed(!!d.admin));
   }, []);
 
-  const loadSettings = useCallback(async () => {
-    const r = await fetch("/api/settings");
-    if (!r.ok) return;
-    const d = await r.json();
-    setModeration(!!d.moderationEnabled);
-    setSavedMod(!!d.moderationEnabled);
-  }, []);
-
   const loadPoints = useCallback(async () => {
-    const r = await fetch(`/api/points?status=${tab}`);
-    if (r.ok) setPoints(await r.json());
-  }, [tab]);
+    const params = new URLSearchParams({
+      status: tab,
+      page: String(page),
+      pageSize: String(PAGE_SIZE),
+    });
+    if (search.trim()) params.set("q", search.trim());
+    const r = await fetch(`/api/points?${params}`);
+    if (!r.ok) return;
+    const d = (await r.json()) as PointsResponse;
+    setPoints(d.points);
+    setTotal(d.pagination.total);
+    setTotalPages(d.pagination.totalPages);
+  }, [page, search, tab]);
 
   useEffect(() => {
-    if (authed) {
-      loadSettings();
-      loadPoints();
-    }
-  }, [authed, loadSettings, loadPoints]);
+    if (!authed) return;
+    void fetch("/api/settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setModeration(!!d.moderationEnabled);
+        setSavedMod(!!d.moderationEnabled);
+        setRestrictDeliveryToVenezuela(!!d.restrictDeliveryToVenezuela);
+        setSavedRestrictDeliveryToVenezuela(!!d.restrictDeliveryToVenezuela);
+      });
+    const params = new URLSearchParams({
+      status: tab,
+      page: String(page),
+      pageSize: String(PAGE_SIZE),
+    });
+    if (search.trim()) params.set("q", search.trim());
+    void fetch(`/api/points?${params}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: PointsResponse | null) => {
+        if (!d) return;
+        setPoints(d.points);
+        setTotal(d.pagination.total);
+        setTotalPages(d.pagination.totalPages);
+      });
+  }, [authed, page, search, tab]);
 
   const login = async () => {
     setLoginError(null);
@@ -62,9 +103,15 @@ export default function AdminPage() {
       const r = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ moderationEnabled: moderation }),
+        body: JSON.stringify({
+          moderationEnabled: moderation,
+          restrictDeliveryToVenezuela,
+        }),
       });
-      if (r.ok) setSavedMod(moderation);
+      if (r.ok) {
+        setSavedMod(moderation);
+        setSavedRestrictDeliveryToVenezuela(restrictDeliveryToVenezuela);
+      }
     } finally {
       setSavingMod(false);
     }
@@ -118,7 +165,7 @@ export default function AdminPage() {
       <h1 className="mb-4 text-xl font-bold">Panel de administración</h1>
 
       <div className="mb-5 rounded-2xl border border-black/10 p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
             <p className="font-medium">Moderación</p>
             <p className="text-sm text-black/55">
@@ -140,13 +187,40 @@ export default function AdminPage() {
             />
           </button>
         </div>
+        <div className="mt-4 flex items-center justify-between gap-4 border-t border-black/10 pt-4">
+          <div>
+            <p className="font-medium">Entregas sólo en Venezuela</p>
+            <p className="text-sm text-black/55">
+              {restrictDeliveryToVenezuela
+                ? "Bloquea crear puntos de entrega de ayuda fuera de Venezuela."
+                : "Permite crear puntos de entrega en cualquier país."}
+            </p>
+          </div>
+          <button
+            onClick={() => setRestrictDeliveryToVenezuela((v) => !v)}
+            className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+              restrictDeliveryToVenezuela ? "bg-blue-600" : "bg-black/20"
+            }`}
+          >
+            <span
+              className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-all ${
+                restrictDeliveryToVenezuela ? "left-6" : "left-1"
+              }`}
+            />
+          </button>
+        </div>
         <div className="mt-3 flex items-center justify-end gap-3">
-          {moderation !== savedMod && (
+          {(moderation !== savedMod ||
+            restrictDeliveryToVenezuela !== savedRestrictDeliveryToVenezuela) && (
             <span className="text-xs text-amber-600">Cambios sin guardar</span>
           )}
           <button
             onClick={saveModeration}
-            disabled={savingMod || moderation === savedMod}
+            disabled={
+              savingMod ||
+              (moderation === savedMod &&
+                restrictDeliveryToVenezuela === savedRestrictDeliveryToVenezuela)
+            }
             className="rounded-lg bg-black px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
           >
             {savingMod ? "Guardando…" : "Guardar"}
@@ -154,11 +228,14 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <div className="mb-4 flex gap-1.5">
+      <div className="mb-3 flex gap-1.5">
         {(["PENDING", "APPROVED"] as Tab[]).map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => {
+              setTab(t);
+              setPage(1);
+            }}
             className={`rounded-full px-4 py-1.5 text-sm font-medium ${
               tab === t ? "bg-black text-white" : "bg-black/5 text-black/60"
             }`}
@@ -168,14 +245,32 @@ export default function AdminPage() {
         ))}
       </div>
 
+      <div className="mb-4">
+        <input
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
+          placeholder="Buscar por nombre o dirección…"
+          className="input"
+        />
+        <p className="mt-2 text-xs text-black/45">
+          {total} punto{total === 1 ? "" : "s"} encontrado
+          {total === 1 ? "" : "s"}
+        </p>
+      </div>
+
       {points.length === 0 ? (
         <p className="py-12 text-center text-sm text-black/40">
-          No hay puntos {tab === "PENDING" ? "pendientes" : "aprobados"}.
+          No hay puntos {tab === "PENDING" ? "pendientes" : "aprobados"}
+          {search.trim() ? " para esa búsqueda" : ""}.
         </p>
       ) : (
-        <ul className="space-y-3">
-          {points.map((p) => (
-            <li key={p.id} className="rounded-2xl border border-black/10 p-4">
+        <>
+          <ul className="space-y-3">
+            {points.map((p) => (
+              <li key={p.id} className="rounded-2xl border border-black/10 p-4">
               <div className="mb-2 flex items-start justify-between gap-2">
                 <div>
                   <span
@@ -224,9 +319,30 @@ export default function AdminPage() {
                   Borrar
                 </button>
               </div>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="rounded-lg border border-black/10 px-4 py-2 text-sm font-medium disabled:opacity-40"
+            >
+              Anterior
+            </button>
+            <span className="text-sm text-black/55">
+              Página {page} de {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="rounded-lg border border-black/10 px-4 py-2 text-sm font-medium disabled:opacity-40"
+            >
+              Siguiente
+            </button>
+          </div>
+        </>
       )}
 
       {editing && (

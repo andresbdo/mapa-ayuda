@@ -19,6 +19,35 @@ const dateTimeString = z
   .optional()
   .or(z.literal(""));
 
+const phoneString = z
+  .string()
+  .trim()
+  .refine((value) => !value || /^\+[1-9]\d{7,14}$/.test(value), {
+    message: "Usá formato internacional: +584121234567",
+  })
+  .optional()
+  .or(z.literal(""));
+
+const contactPhoneSchema = z.object({
+  phone: z.string().trim().regex(/^\+[1-9]\d{7,14}$/, {
+    message: "Usá formato internacional: +584121234567",
+  }),
+  whatsapp: z.boolean(),
+});
+
+const instagramString = z
+  .string()
+  .trim()
+  .transform((value) => value.replace(/^@+/, ""))
+  .refine(
+    (value) =>
+      !value ||
+      /^(?!.*\.\.)(?!.*\.$)[A-Za-z0-9][A-Za-z0-9._]{0,29}$/.test(value),
+    { message: "Handle de Instagram inválido" }
+  )
+  .optional()
+  .or(z.literal(""));
+
 export const pointInputSchema = z
   .object({
     type: z.enum(POINT_TYPES),
@@ -32,7 +61,10 @@ export const pointInputSchema = z
     hours: z.string().trim().max(60).optional().or(z.literal("")),
     startDate: dateString,
     endDate: dateTimeString,
-    contact: z.string().trim().max(120).optional().or(z.literal("")),
+    contact: phoneString,
+    contacts: z.array(contactPhoneSchema).max(3, "Máximo 3 celulares").default([]),
+    instagram: instagramString,
+    temporarilyUnavailable: z.boolean().default(false),
   })
   .refine(
     (d) => !d.startDate || !d.endDate || d.endDate >= d.startDate,

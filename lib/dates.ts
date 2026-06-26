@@ -1,8 +1,6 @@
 export function isoToDisplayDate(value: string | null): string {
   if (!value) return "";
-  const isoDate = new Date(value).toISOString().slice(0, 10);
-  const [year, month, day] = isoDate.split("-");
-  return `${day}/${month}/${year}`;
+  return new Date(value).toISOString().slice(0, 10);
 }
 
 export function isoToDisplayTime(value: string | null): string {
@@ -14,12 +12,12 @@ export function displayDateToIso(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return "";
 
-  const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;
 
-  const day = match[1].padStart(2, "0");
-  const month = match[2].padStart(2, "0");
-  const year = match[3];
+  const year = match[1];
+  const month = match[2];
+  const day = match[3];
   const date = new Date(`${year}-${month}-${day}T00:00:00.000Z`);
 
   if (

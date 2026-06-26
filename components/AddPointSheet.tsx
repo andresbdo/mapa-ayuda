@@ -3,7 +3,10 @@
 import { useState } from "react";
 import { DAYS, TYPE_LABELS, type PointType } from "@/lib/types";
 import { haversineKm, formatKm } from "@/lib/geo";
-import { displayDateToIso, displayDeadlineToIso, formatDateInput } from "@/lib/dates";
+import { displayDateToIso, displayDeadlineToIso } from "@/lib/dates";
+import { normalizeContactPhones, normalizeInstagramHandle, type ContactPhone } from "@/lib/contact";
+import { readApiError } from "@/lib/form-errors";
+import ContactPhonesEditor from "./ContactPhonesEditor";
 
 type GeoResult = {
   lat: string;
@@ -47,8 +50,10 @@ export default function AddPointSheet({
   const [endDate, setEndDate] = useState("");
   const [endTime, setEndTime] = useState("");
   const [address, setAddress] = useState("");
-  const [contact, setContact] = useState("");
+  const [contacts, setContacts] = useState<ContactPhone[]>([]);
+  const [instagram, setInstagram] = useState("");
   const [description, setDescription] = useState("");
+  const [temporarilyUnavailable, setTemporarilyUnavailable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<null | "PENDING" | "APPROVED">(null);
@@ -120,7 +125,7 @@ export default function AddPointSheet({
     const startDateIso = displayDateToIso(startDate);
     const endDateIso = displayDeadlineToIso(endDate, endTime);
     if (startDateIso == null || endDateIso == null) {
-      setError("Usá fechas con formato día/mes/año, por ejemplo 31/12/2026.");
+      setError("Revisá las fechas. Usá el selector de calendario.");
       return;
     }
     if (startDateIso && endDateIso && endDateIso < startDateIso) {
@@ -134,6 +139,7 @@ export default function AddPointSheet({
         : openTime
           ? `Desde ${openTime}`
           : "";
+    const normalizedContacts = normalizeContactPhones(contacts);
     setSubmitting(true);
     try {
       const res = await fetch("/api/points", {
@@ -151,17 +157,16 @@ export default function AddPointSheet({
           hours,
           startDate: startDateIso,
           endDate: endDateIso,
-          contact,
+          contact: normalizedContacts[0]?.phone ?? "",
+          contacts: normalizedContacts,
+          instagram: normalizeInstagramHandle(instagram),
+          temporarilyUnavailable,
         }),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          issues?: { fieldErrors?: Record<string, string[]> };
-        } | null;
-        const fieldError = body?.issues?.fieldErrors
-          ? Object.values(body.issues.fieldErrors).flat()[0]
-          : null;
-        setError(fieldError || "No se pudo guardar. Revisá los datos.");
+        setError(
+          await readApiError(res, "No se pudo guardar. Revisá los campos marcados.")
+        );
         return;
       }
       const point = (await res.json()) as { status: "PENDING" | "APPROVED" };
@@ -419,13 +424,12 @@ export default function AddPointSheet({
           )}
         </div>
 
-        <div className="mb-3 grid grid-cols-2 gap-2">
+        <div className="mb-3 grid gap-2 sm:grid-cols-2">
           <Field label="Inicio">
             <input
-              inputMode="numeric"
+              type="date"
               value={startDate}
-              onChange={(e) => setStartDate(formatDateInput(e.target.value))}
-              placeholder="dd/mm/aaaa"
+              onChange={(e) => setStartDate(e.target.value)}
               className="input"
             />
           </Field>
@@ -433,12 +437,11 @@ export default function AddPointSheet({
             <span className="mb-1 block text-sm font-medium text-black/70">
               Fecha límite
             </span>
-            <div className="grid grid-cols-[1fr_6.25rem] gap-2">
+            <div className="grid gap-2 sm:grid-cols-[1fr_6.25rem]">
               <input
-                inputMode="numeric"
+                type="date"
                 value={endDate}
-                onChange={(e) => setEndDate(formatDateInput(e.target.value))}
-                placeholder="dd/mm/aaaa"
+                onChange={(e) => setEndDate(e.target.value)}
                 className="input"
                 aria-label="Fecha límite"
               />
@@ -462,14 +465,41 @@ export default function AddPointSheet({
           />
         </Field>
 
-        <Field label="Contacto (WhatsApp / teléfono)">
+        <ContactPhonesEditor contacts={contacts} onChange={setContacts} />
+
+        <Field label="Instagram">
           <input
-            value={contact}
-            onChange={(e) => setContact(e.target.value)}
-            placeholder="+58…"
+            value={instagram}
+            onChange={(e) => setInstagram(e.target.value)}
+            onBlur={() => setInstagram(normalizeInstagramHandle(instagram))}
+            placeholder="@usuario"
             className="input"
           />
         </Field>
+
+        <div className="mb-3 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 p-3">
+          <div>
+            <p className="text-sm font-semibold text-red-700">
+              No disponible temporalmente
+            </p>
+            <p className="text-xs text-red-700/70">
+              Mostrará una etiqueta roja en el mapa.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setTemporarilyUnavailable((v) => !v)}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+              temporarilyUnavailable ? "bg-red-600" : "bg-black/20"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
+                temporarilyUnavailable ? "left-[22px]" : "left-0.5"
+              }`}
+            />
+          </button>
+        </div>
 
         <Field label="Notas (opcional)">
           <textarea

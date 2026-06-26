@@ -33,6 +33,9 @@ model Point {
   startDate     DateTime?
   endDate       DateTime?
   contact       String?
+  contacts      Json        @default("[]")
+  instagram     String?
+  temporarilyUnavailable Boolean @default(false)
   status        PointStatus @default(PENDING)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -66,5 +69,6 @@ model EditIpBlacklist {
 model Settings {
   id                String   @id @default("global")
   moderationEnabled Boolean  @default(true)
+  restrictDeliveryToVenezuela Boolean @default(true)
   updatedAt         DateTime @updatedAt
 }

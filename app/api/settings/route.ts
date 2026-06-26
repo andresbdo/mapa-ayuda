@@ -8,7 +8,10 @@ export async function GET() {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
   const settings = await getSettings();
-  return NextResponse.json({ moderationEnabled: settings.moderationEnabled });
+  return NextResponse.json({
+    moderationEnabled: settings.moderationEnabled,
+    restrictDeliveryToVenezuela: settings.restrictDeliveryToVenezuela,
+  });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -18,11 +21,15 @@ export async function PATCH(req: NextRequest) {
 
   const body = (await req.json().catch(() => ({}))) as {
     moderationEnabled?: boolean;
+    restrictDeliveryToVenezuela?: boolean;
   };
 
-  if (typeof body.moderationEnabled !== "boolean") {
+  if (
+    typeof body.moderationEnabled !== "boolean" ||
+    typeof body.restrictDeliveryToVenezuela !== "boolean"
+  ) {
     return NextResponse.json(
-      { error: "moderationEnabled debe ser boolean" },
+      { error: "Configuración inválida" },
       { status: 400 }
     );
   }
@@ -30,8 +37,14 @@ export async function PATCH(req: NextRequest) {
   await getSettings();
   const updated = await prisma.settings.update({
     where: { id: "global" },
-    data: { moderationEnabled: body.moderationEnabled },
+    data: {
+      moderationEnabled: body.moderationEnabled,
+      restrictDeliveryToVenezuela: body.restrictDeliveryToVenezuela,
+    },
   });
 
-  return NextResponse.json({ moderationEnabled: updated.moderationEnabled });
+  return NextResponse.json({
+    moderationEnabled: updated.moderationEnabled,
+    restrictDeliveryToVenezuela: updated.restrictDeliveryToVenezuela,
+  });
 }
