@@ -22,6 +22,8 @@ type GeoResult = {
   km?: number;
 };
 
+type LocItem = { lat: number; lng: number; address: string };
+
 export default function AddPointSheet({
   initialLat,
   initialLng,
@@ -39,10 +41,10 @@ export default function AddPointSheet({
 }) {
   const [type, setType] = useState<PointType>("COLLECTION");
   const [name, setName] = useState("");
-  const [loc, setLoc] = useState<{ lat: number; lng: number } | null>(
+  const [locs, setLocs] = useState<LocItem[]>(
     initialLat != null && initialLng != null
-      ? { lat: initialLat, lng: initialLng }
-      : null
+      ? [{ lat: initialLat, lng: initialLng, address: `${initialLat.toFixed(5)}, ${initialLng.toFixed(5)}` }]
+      : []
   );
   const [geoQuery, setGeoQuery] = useState("");
   const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
@@ -57,7 +59,6 @@ export default function AddPointSheet({
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [endTime, setEndTime] = useState("");
-  const [address, setAddress] = useState("");
   const [contacts, setContacts] = useState<ContactPhone[]>([]);
   const [instagram, setInstagram] = useState("");
   const [instagramPost, setInstagramPost] = useState("");
@@ -65,7 +66,7 @@ export default function AddPointSheet({
   const [temporarilyUnavailable, setTemporarilyUnavailable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<null | "PENDING" | "APPROVED">(null);
+  const [done, setDone] = useState<null | { status: "PENDING" | "APPROVED"; count: number }>(null);
 
   const addItem = () => {
     const v = itemInput.trim();
@@ -77,29 +78,25 @@ export default function AddPointSheet({
   const removeItem = (i: number) =>
     setItems((prev) => prev.filter((_, idx) => idx !== i));
 
+  const removeLoc = (i: number) =>
+    setLocs((prev) => prev.filter((_, idx) => idx !== i));
+
   const geocode = async () => {
     if (!geoQuery.trim()) return;
     setGeoLoading(true);
     try {
       const viewbox = userLoc
-        ? `&viewbox=${userLoc.lng - 1},${userLoc.lat + 1},${userLoc.lng + 1},${
-            userLoc.lat - 1
-          }&bounded=0`
+        ? `&viewbox=${userLoc.lng - 1},${userLoc.lat + 1},${userLoc.lng + 1},${userLoc.lat - 1}&bounded=0`
         : "";
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&limit=8&accept-language=${encodeURIComponent(
-          navigator.language
-        )}${viewbox}&q=${encodeURIComponent(geoQuery)}`
+        `https://nominatim.openstreetmap.org/search?format=json&limit=8&accept-language=${encodeURIComponent(navigator.language)}${viewbox}&q=${encodeURIComponent(geoQuery)}`
       );
       let results: GeoResult[] = res.ok ? await res.json() : [];
       if (userLoc) {
         results = results
           .map((r) => ({
             ...r,
-            km: haversineKm(userLoc, {
-              lat: parseFloat(r.lat),
-              lng: parseFloat(r.lon),
-            }),
+            km: haversineKm(userLoc, { lat: parseFloat(r.lat), lng: parseFloat(r.lon) }),
           }))
           .sort((a, b) => (a.km ?? Infinity) - (b.km ?? Infinity));
       }
@@ -110,16 +107,18 @@ export default function AddPointSheet({
   };
 
   const pickResult = (r: GeoResult) => {
-    setLoc({ lat: parseFloat(r.lat), lng: parseFloat(r.lon) });
-    setAddress(r.display_name);
+    setLocs((prev) => [
+      ...prev,
+      { lat: parseFloat(r.lat), lng: parseFloat(r.lon), address: r.display_name },
+    ]);
     setGeoResults([]);
     setGeoQuery("");
   };
 
   const submit = async () => {
     setError(null);
-    if (!loc) {
-      setError("Fijá la ubicación: buscá una dirección o tocá el mapa.");
+    if (locs.length === 0) {
+      setError("Agregá al menos una ubicación.");
       return;
     }
     if (name.trim().length < 2) {
@@ -144,38 +143,42 @@ export default function AddPointSheet({
       byDay: byDaySchedule,
     });
     const normalizedContacts = normalizeContactPhones(contacts);
+    const basePayload = {
+      type,
+      name,
+      description,
+      items: itemInput.trim() ? [...items, itemInput.trim()] : items,
+      days,
+      hours,
+      startDate: startDateIso,
+      endDate: endDateIso,
+      contact: normalizedContacts[0]?.phone ?? "",
+      contacts: normalizedContacts,
+      instagram: normalizeInstagramHandle(instagram),
+      instagramPost: instagramPost.trim() || "",
+      temporarilyUnavailable,
+    };
+
     setSubmitting(true);
     try {
-      const res = await fetch("/api/points", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type,
-          name,
-          description,
-          lat: loc.lat,
-          lng: loc.lng,
-          address,
-          items: itemInput.trim() ? [...items, itemInput.trim()] : items,
-          days,
-          hours,
-          startDate: startDateIso,
-          endDate: endDateIso,
-          contact: normalizedContacts[0]?.phone ?? "",
-          contacts: normalizedContacts,
-          instagram: normalizeInstagramHandle(instagram),
-          instagramPost: instagramPost.trim() || "",
-          temporarilyUnavailable,
-        }),
-      });
-      if (!res.ok) {
-        setError(
-          await readApiError(res, "No se pudo guardar. Revisá los campos marcados.")
-        );
+      const responses = await Promise.all(
+        locs.map((loc) =>
+          fetch("/api/points", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...basePayload, lat: loc.lat, lng: loc.lng, address: loc.address }),
+          })
+        )
+      );
+
+      const failed = responses.filter((r) => !r.ok);
+      if (failed.length > 0) {
+        setError(await readApiError(failed[0], "No se pudo guardar. Revisá los campos marcados."));
         return;
       }
-      const point = (await res.json()) as { status: "PENDING" | "APPROVED" };
-      setDone(point.status);
+
+      const first = (await responses[0].json()) as { status: "PENDING" | "APPROVED" };
+      setDone({ status: first.status, count: locs.length });
     } finally {
       setSubmitting(false);
     }
@@ -185,14 +188,16 @@ export default function AddPointSheet({
     return (
       <Backdrop onClose={onCreated}>
         <div className="p-6 text-center">
-          <div className="mb-2 text-4xl">{done === "PENDING" ? "🕓" : "✅"}</div>
+          <div className="mb-2 text-4xl">{done.status === "PENDING" ? "🕓" : "✅"}</div>
           <h2 className="text-lg font-semibold">
-            {done === "PENDING" ? "¡Gracias! Punto enviado" : "¡Punto publicado!"}
+            {done.status === "PENDING"
+              ? done.count > 1 ? `¡Gracias! ${done.count} puntos enviados` : "¡Gracias! Punto enviado"
+              : done.count > 1 ? `¡${done.count} puntos publicados!` : "¡Punto publicado!"}
           </h2>
           <p className="mt-1 text-sm text-black/60">
-            {done === "PENDING"
-              ? "Lo vamos a revisar y aparecerá en el mapa en breve."
-              : "Ya está visible en el mapa."}
+            {done.status === "PENDING"
+              ? "Los vamos a revisar y aparecerán en el mapa en breve."
+              : "Ya están visibles en el mapa."}
           </p>
           <button
             onClick={onCreated}
@@ -240,79 +245,82 @@ export default function AddPointSheet({
 
         <div className="mb-4">
           <span className="mb-1 block text-sm font-medium text-black/70">
-            Ubicación *
+            Ubicaciones *
           </span>
-          {loc ? (
-            <div className="flex items-start justify-between gap-2 rounded-xl bg-green-50 p-3">
-              <div className="text-sm">
-                <p className="font-medium text-green-800">📍 Ubicación fijada</p>
-                {address && (
-                  <p className="mt-0.5 text-green-700/80">{address}</p>
-                )}
-                <p className="mt-0.5 text-xs text-green-700/60">
-                  {loc.lat.toFixed(5)}, {loc.lng.toFixed(5)}
-                </p>
-              </div>
-              <button
-                onClick={() => setLoc(null)}
-                className="shrink-0 text-sm font-medium text-green-700 underline"
-              >
-                cambiar
-              </button>
-            </div>
-          ) : (
-            <div>
-              <div className="flex gap-2">
-                <input
-                  value={geoQuery}
-                  onChange={(e) => setGeoQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      geocode();
-                    }
-                  }}
-                  placeholder="Buscá una dirección o lugar…"
-                  className="input"
-                />
-                <button
-                  type="button"
-                  onClick={geocode}
-                  disabled={geoLoading}
-                  className="shrink-0 rounded-xl bg-black px-4 text-sm font-medium text-white disabled:opacity-50"
+
+          {locs.length > 0 && (
+            <ul className="mb-2 space-y-1.5">
+              {locs.map((loc, i) => (
+                <li
+                  key={i}
+                  className="flex items-start justify-between gap-2 rounded-xl bg-green-50 px-3 py-2.5"
                 >
-                  {geoLoading ? "…" : "Buscar"}
-                </button>
-              </div>
-              {geoResults.length > 0 && (
-                <ul className="mt-2 max-h-44 overflow-y-auto rounded-xl border border-black/10">
-                  {geoResults.map((r, i) => (
-                    <li key={i} className="border-b border-black/5 last:border-0">
-                      <button
-                        type="button"
-                        onClick={() => pickResult(r)}
-                        className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-black/5"
-                      >
-                        <span className="flex-1">{r.display_name}</span>
-                        {r.km != null && (
-                          <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                            {formatKm(r.km)}
-                          </span>
-                        )}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <button
-                type="button"
-                onClick={onPickOnMap}
-                className="mt-2 w-full rounded-xl border border-black/10 py-2.5 text-sm font-medium text-black/70"
-              >
-                o tocá el punto en el mapa
-              </button>
-            </div>
+                  <div className="min-w-0 text-sm">
+                    <p className="font-medium text-green-800">📍 Ubicación {i + 1}</p>
+                    <p className="truncate text-xs text-green-700/70">{loc.address}</p>
+                  </div>
+                  <button
+                    onClick={() => removeLoc(i)}
+                    className="shrink-0 text-sm font-medium text-green-700 underline"
+                  >
+                    Quitar
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
+
+          <div className="flex gap-2">
+            <input
+              value={geoQuery}
+              onChange={(e) => setGeoQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  geocode();
+                }
+              }}
+              placeholder="Buscá una dirección o lugar…"
+              className="input"
+            />
+            <button
+              type="button"
+              onClick={geocode}
+              disabled={geoLoading}
+              className="shrink-0 rounded-xl bg-black px-4 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {geoLoading ? "…" : "Buscar"}
+            </button>
+          </div>
+
+          {geoResults.length > 0 && (
+            <ul className="mt-2 max-h-44 overflow-y-auto rounded-xl border border-black/10">
+              {geoResults.map((r, i) => (
+                <li key={i} className="border-b border-black/5 last:border-0">
+                  <button
+                    type="button"
+                    onClick={() => pickResult(r)}
+                    className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-black/5"
+                  >
+                    <span className="flex-1">{r.display_name}</span>
+                    {r.km != null && (
+                      <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                        {formatKm(r.km)}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <button
+            type="button"
+            onClick={onPickOnMap}
+            className="mt-2 w-full rounded-xl border border-black/10 py-2.5 text-sm font-medium text-black/70"
+          >
+            o tocá el punto en el mapa
+          </button>
         </div>
 
         <Field label="Nombre del lugar *">
@@ -324,9 +332,7 @@ export default function AddPointSheet({
           />
         </Field>
 
-        <Field
-          label={type === "COLLECTION" ? "¿Qué reciben?" : "¿Qué entregan?"}
-        >
+        <Field label={type === "COLLECTION" ? "¿Qué reciben?" : "¿Qué entregan?"}>
           {items.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-1.5">
               {items.map((it, i) => (
@@ -415,15 +421,6 @@ export default function AddPointSheet({
           </div>
         </div>
 
-        <Field label="Referencia">
-          <input
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            placeholder="Calle, barrio, referencia"
-            className="input"
-          />
-        </Field>
-
         <ContactPhonesEditor contacts={contacts} onChange={setContacts} />
 
         <Field label="Instagram (perfil)">
@@ -485,7 +482,11 @@ export default function AddPointSheet({
           disabled={submitting}
           className="w-full rounded-xl bg-blue-600 py-3.5 text-sm font-semibold text-white disabled:opacity-50"
         >
-          {submitting ? "Guardando…" : "Publicar punto"}
+          {submitting
+            ? "Guardando…"
+            : locs.length > 1
+            ? `Publicar ${locs.length} puntos`
+            : "Publicar punto"}
         </button>
       </div>
     </Backdrop>
