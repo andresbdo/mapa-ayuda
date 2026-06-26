@@ -13,9 +13,40 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Mapa de Ayuda — Centros de acopio y entrega",
+  metadataBase: new URL("https://buscarayudavenezuela.com"),
+  title: {
+    default: "Buscar Ayuda Venezuela",
+    template: "%s | Buscar Ayuda Venezuela",
+  },
   description:
-    "Mapa colaborativo de centros de acopio y puntos de entrega de ayuda.",
+    "Mapa colaborativo para encontrar centros de acopio y puntos de entrega de ayuda en Venezuela.",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "Buscar Ayuda Venezuela",
+    description:
+      "Encuentra y comparte centros de acopio y puntos de entrega de ayuda en Venezuela.",
+    url: "https://buscarayudavenezuela.com",
+    siteName: "Buscar Ayuda Venezuela",
+    locale: "es_VE",
+    type: "website",
+    images: [
+      {
+        url: "/social-preview.png",
+        width: 1730,
+        height: 909,
+        alt: "Mapa de Venezuela con puntos de ayuda y centros de acopio",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Buscar Ayuda Venezuela",
+    description:
+      "Mapa colaborativo para encontrar centros de acopio y puntos de entrega de ayuda en Venezuela.",
+    images: ["/social-preview.png"],
+  },
 };
 
 export default function RootLayout({
