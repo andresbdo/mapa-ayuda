@@ -8,6 +8,7 @@ import PointDetails from "./PointDetails";
 import { TYPE_LABELS, type PointType } from "@/lib/types";
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
+const LOCATION_ENABLED_KEY = "mapa-ayuda-location-enabled";
 
 function escapeHtml(s: string): string {
   return s
@@ -68,6 +69,7 @@ type Filter = "ALL" | PointType;
 export default function MapView() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const geolocateRef = useRef<maplibregl.GeolocateControl | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
 
   const [points, setPoints] = useState<Point[]>([]);
@@ -110,12 +112,26 @@ export default function MapView() {
         fitBoundsOptions: { maxZoom: 15, animate: false },
       });
       map.addControl(geolocate, "bottom-right");
+      geolocateRef.current = geolocate;
       geolocate.on("geolocate", (e: { coords: GeolocationCoordinates }) => {
         setUserLoc({ lat: e.coords.latitude, lng: e.coords.longitude });
+        setLocating(false);
+        localStorage.setItem(LOCATION_ENABLED_KEY, "true");
+      });
+      geolocate.on("error", () => {
+        setLocating(false);
+        localStorage.removeItem(LOCATION_ENABLED_KEY);
       });
       map.on("load", () => {
         if (cancelled) return;
-        setShowLocationPrompt("geolocation" in navigator);
+        const shouldLocate =
+          "geolocation" in navigator &&
+          localStorage.getItem(LOCATION_ENABLED_KEY) === "true";
+        setShowLocationPrompt("geolocation" in navigator && !shouldLocate);
+        if (shouldLocate) {
+          setLocating(true);
+          geolocate.trigger();
+        }
       });
 
       mapRef.current = map;
@@ -128,6 +144,7 @@ export default function MapView() {
       cancelled = true;
       mapRef.current?.remove();
       mapRef.current = null;
+      geolocateRef.current = null;
     };
   }, [loadPoints]);
 
@@ -187,24 +204,7 @@ export default function MapView() {
     if (!navigator.geolocation) return;
 
     setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const nextLoc = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        };
-        setUserLoc(nextLoc);
-        mapRef.current?.flyTo({
-          center: [nextLoc.lng, nextLoc.lat],
-          zoom: 14,
-        });
-        setLocating(false);
-      },
-      () => {
-        setLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    );
+    geolocateRef.current?.trigger();
   };
 
   const runSearch = async (e: React.FormEvent) => {
